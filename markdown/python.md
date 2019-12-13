@@ -696,7 +696,7 @@ int x=2337
 
  以简化的内存视图显示，它可能如下所示： 
 
-![](../picture/work/37.png)
+![](D:/学习/MarkDown/picture/work/37.png)
 
 另一种思考这个概念的方法是在所有权方面。从某种意义上说，`x`拥有内存位置。首先，`x`恰好是一个可以存储整数的空盒子，可以用来存储整数值。当您给`x`赋值时，您将向`x`拥有的盒子中放入一个值。如果你想引入一个新的变量`y`，
 
@@ -704,7 +704,7 @@ int x=2337
 int y=x
 ```
 
-![](../picture/work/38.png)
+![](D:/学习/MarkDown/picture/work/38.png)
 
 ###### python中的名称
 
@@ -714,7 +714,7 @@ x=2337
 
 与`C`类似，python在执行过程中分解为几个不同的步骤：创建一个`PyObject`；将`PyObject`的`typecode`设置为整数`PyObject`；将`PyObject`的值设置为2337；创建一个名称`x`；将`x`指向新的`PyObject`；将`PyObject`引用计数增加`1`
 
-![](../picture/work/39.png)
+![](D:/学习/MarkDown/picture/work/39.png)
 
 ```python
 x=2338
@@ -722,13 +722,13 @@ x=2338
 
 这行代码：创建一个新的`PyObject`；将`PyObject`的`typecode`设置为整数；将`PyObject`的值设置为2338；将`x`指向新的`PyObject`；将新的`PyObject`引用计数增加1；将旧的`PyObject`引用计数减少1
 
-![](../picture/work/40.png)
+![](D:/学习/MarkDown/picture/work/40.png)
 
 ```python
 y=x
 ```
 
-![](../picture/work/41.png)
+![](D:/学习/MarkDown/picture/work/41.png)
 
 ###### python中的预实现对象
 
