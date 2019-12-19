@@ -1,8 +1,13 @@
 import pandas as pd 
 import numpy as np 
-import matplotlib.pyplot as plt
 import seaborn as sns
+import scipy.stats as stats
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 
+plt.rcParams['font.family'] = ['sans-serif']
+plt.rcParams['font.sans-serif'] = ['SimHei'] # 可以显示中文
+plt.rcParams['axes.unicode_minus']=False # 可以显示负号
 
 def split_cat_num(data, cat=15):
     '''对特征进行分类，得到数值特征和类别特征，对于数值特征中取值较少的特征，将其
@@ -16,29 +21,25 @@ def split_cat_num(data, cat=15):
     return category, num, n_index
 
 
-import scipy.stats as stats
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-
-
 class FeatureStatistics:
         
-    def split(self,data): #划分类被和数值特征
+    def split(self,data): #划分类别和数值特征
         numerical = data.select_dtypes(exclude='object')
         categorical = data.select_dtypes(include='object')
         return numerical, categorical
 
-    def describe(self, data): # 得到数值和类别特征的一些统计特征
+    def describe(self, data):  # 得到数值和类别特征的一些统计特征
         numerical,categorical = self.split(data)
         if not numerical.empty:
             _ = self.describe_num(numerical)
         if not categorical.empty:
             _ = self.describe_cat(categorical)
 
-    def describe_num(self, numerical):
+    def describe_num(self, numerical, stat=False): 
+        '''得到数值特征的统计特征，主要为缺失值、高频值、负值比例、其他统计特征'''
         length = numerical.shape[0]
         self.num = pd.DataFrame(columns=['数据名','空值比例','类别数','高频类别','高频类别比例',
-        '负值比例','零值比例','最大值','最小值','中位数','均值','偏度','峰度'])
+        '负值比例','零值比例'])
         self.num['数据名'] = numerical.columns
         self.num = self.num.set_index('数据名')
         self.num['空值比例'] = pd.isnull(numerical).sum()/length
@@ -49,16 +50,26 @@ class FeatureStatistics:
             )/length
         self.num['负值比例'] = (numerical<0).sum()/length
         self.num['零值比例'] = (numerical==0).sum()/length
-        self.num['最大值'] = numerical.max()
-        self.num['最小值'] = numerical.min()
-        self.num['均值'] = numerical.mean()
-        self.num['中位数'] = numerical.median()
-        self.num['偏度'] = numerical.skew()
-        self.num['峰度'] = numerical.kurt()
+        if stat:
+            statis = self.statistic(numerical)
+            self.num = self.num.join(statis)
         self.num = self.num.reset_index()
         return self.num
     
-    def describe_cat(self, categorical):
+    def statistic(self, numerical): # 得到数值特征的统计特征。
+        stat = pd.DataFrame(columns=['数据名','最大值','最小值','中位数','均值','偏度','峰度'])
+        stat['数据名'] = numerical.columns
+        stat = stat.set_index('数据名')
+        stat['最小值'] = numerical.min()
+        stat['最大值'] = numerical.max()
+        stat['均值'] = numerical.mean()
+        stat['中位数'] = numerical.median()
+        stat['偏度'] = numerical.skew()
+        stat['峰度'] = numerical.kurt()
+        return stat
+
+    def describe_cat(self, categorical): 
+        '''得到类别特征的信息，包括空值、高频值、熵值'''
         length = categorical.shape[0]
         self.cat = pd.DataFrame(columns=['数据名','空值比例','类别数','高频类别',
                         '高频类别比例','熵'])
@@ -71,50 +82,58 @@ class FeatureStatistics:
         self.cat['高频类别比例'] = (categorical==self.cat['高频类别']).sum(
             )/length
         self.cat['熵'] = categorical.apply(lambda x:stats.entropy(
-        x.value_counts(normalize=True), base=2))
+        x.value_counts(normalize=True), base=2))/np.log2(self.cat['类别数']) # 越接近0代表分布越集中，越接近1代表分布越分散。
         self.cat = self.cat.reset_index()
         return self.cat
       
     def plot(self, data):# 可视化类别和数值特征，数值默认为分布图，类别默认为柱状图
-        plt.rcParams['font.family'] = ['sans-serif']
-        plt.rcParams['font.sans-serif'] = ['SimHei'] # 可以显示中文
-        plt.rcParams['axes.unicode_minus']=False # 可以显示负号
-        numerical,categorical = self.split(data)
+        numerical, categorical = self.split(data)
         if not numerical.empty:
             self.plot_numerical(numerical)
         if not categorical.empty:
             self.plot_categories(categorical)
 
     def plot_numerical(self, numerical, style=sns.distplot):
+        '''数值特征的可视化，包括箱型图，kdeplot, histplot'''
         melt = pd.melt(numerical)
         g = sns.FacetGrid(data=melt, col="variable", col_wrap=4, 
                           sharex=False, sharey=False)
         g.map(style, 'value')
 
-    def plot_categories(self, categorical):
+    def plot_categories(self, categorical): 
         melt = pd.melt(categorical)
         g = sns.FacetGrid(data=melt, col="variable", col_wrap=4, 
                           sharex=False, sharey=False)
         g.map(self._catplot, 'value')
             
-    def _catplot(self, x, **kwarg):
+    def _catplot(self, x, **kwarg):  # 类别特征的可视化
         count = x.value_counts()
         ax = plt.gca( )
-        if count.shape[0]>50:
-            sns.barplot(x=count.index, y=count.values, ax=ax, **kwarg)
+        if count.shape[0]>50: #对于取值较多的特征，绘制散点图。
+            ax.scatter(x=count.index, y=count.values, **kwarg)
+            ax.axhline(y=0, color='r', linestyle='--')
             ax.xaxis.set_ticklabels([])
-        else:
+        else:  # 其他情况下绘制条形图。
             sns.barplot(x=count.index, y=count.values, ax=ax, **kwarg)
 
-
-class Categorical:
+class CatNum():
     def __init__(self):
         self.font1 = {'family': 'Calibri','weight': 'normal','size': 18}
         self.font2 = {'family': 'Calibri','weight': 'normal','size': 23}
     
-    def _crosstab(self, data, target, feature, ax=None):
+    def get_ax(self, ax=None):
         if ax is None:
-            ax = plt.gca()
+            fig = plt.figure(figsize=(6,5))
+            ax = fig.add_subplot()
+            return ax
+        return ax
+
+
+class Categorical(CatNum): 
+    '''对类别特征进行分析，适合取值不多的类别特征。对于取值很多的类别特征可视化效果不好'''
+    def _crosstab(self, data, feature, target, ax=None):
+        '''查看目标在类别特征的每个值的分布情况。'''
+        ax = self.get_ax(ax)
         ct = pd.crosstab(data[feature], data[target], normalize='index')
         ct.plot(kind='bar',stacked=True,ax=ax)
         ax.set_title('{}'.format(feature))
@@ -123,7 +142,7 @@ class Categorical:
         ax.set_xlabel('')
         return ax
         
-    def plot_crosstab(self, data, target, features):
+    def plot_crosstab(self, data, features, target):
         nrows = len(features)//4+1
         fig = plt.figure(figsize=(16, 4*nrows))
         grid = gridspec.GridSpec(nrows=nrows,ncols=4)
@@ -131,7 +150,7 @@ class Categorical:
             ax = fig.add_subplot(grid[i])
             self._crosstab(data, target, each, ax=ax)
         fig.subplots_adjust(wspace = 0.3, hspace =0.2)
-        return fig
+        return fig, ax
     
     def plot_dist(self, data, features, target):
         nrows = len(features)
@@ -146,8 +165,9 @@ class Categorical:
         return fig   
 
     def plot_bar(self, data, feature,ax1=None):
-        '''用条形图展示值分布。名义变量，异常值的判定方法：若某个类别所含样品频数特别少，则可以认为是异常值，
-舍弃。若有多个类别的样本频数都较少，可以考虑合并类别。'''
+        '''用条形图展示值分布。在类别特征中，若某个类别所含样品频数特别少，则可以认为是异常值，舍弃。
+        若有多个类别的样本频数都较少，可以考虑合并类别。'''
+        ax1 = self.get_ax(ax1)
         df = data[feature].value_counts().sort_values()
         df.plot(kind='bar',ax=ax1)
         ax1.set_title('{} distribution'.format(feature), fontdict=self.font2)
@@ -160,12 +180,7 @@ class Categorical:
         return ax1
 
     def plot_bar_line(self, data, feature, target, ax=None):
-        '''用target标签对每个字段进行分组：违约与正常。用叠加条形图的方式进行“要素分析”。
-        并且计算一个字段的每个类别中，违约人数与正常人数的比值，并画出折线图。
-        高过红线，说明这个类别里的违约正常比比总训练集的违约正常比要高，
-        说明如果某个样本在此字段是落入这个类别，则倾向于预测为违约人。低于红线，
-        说明这个类别里的违约正常比比总训练集的违约正常比要低，
-        说明如果某个样本在此字段是落入这个类别，则倾向于预测为正常'''
+        ax = self.get_ax(ax)
         df = pd.crosstab(data[feature], data[target])
         df.plot(kind='bar', stacked=True, ax=ax,alpha=0.7)
         ax.set_title('{} distribution'.format(feature), fontdict=self.font2)
@@ -178,35 +193,37 @@ class Categorical:
         axt.plot(xs, odds,marker="o")
         axt.set_ylabel("odds",fontdict=self.font1, labelpad= 6)
         odd = df.sum()[1]/df.sum()[0]
-        axt.plot(xs, [odd]*df.shape[0], color="crimson",alpha=0.9,
-                linestyle="--")
+        axt.axhline(odd, color="crimson", alpha=0.9, linestyle="--")
         return ax
 
 
-class Numerical:
-    def __init__(self):
-        self.font1 = {'family': 'Calibri','weight': 'normal','size': 18}
-        self.font2 = {'family': 'Calibri','weight': 'normal','size': 23}
+class Numerical(CatNum):
 
-    def _kstest(self, data, feature):
+    def drop_null_item(self, data, feature=None):
+        if feature is None:
+            return data[data.notnull()]
+        temp = data.loc[data[feature].notnull(), feature]
+        return temp
+
+    def _kstest(self, data, feature):  # 检验特征分布是否为正态分布。
         mean,std = data[feature].mean(), data[feature].std()
-        _,pvalue = stats.kstest(data[feature], stats.norm(mean, std).cdf)
+        temp = self.drop_null_item(data, feature)
+        _,pvalue = stats.kstest(temp, stats.norm(mean, std).cdf)
         if pvalue < 0.05:
             return False
         else:
             return True
 
-    def kstests(self, data, features):
+    def kstests(self, data, features):  
         mask = [self._kstest(data, each) for each in features]
         return mask
     
     def plot_kde(self, data, feature, ax=None):
-        if ax is None:
-            ax = plt.gca()
-        sample = data[feature].to_numpy()
+        ax = self.get_ax(ax)
+        sample = self.drop_null_item(data, feature).to_numpy()
         dist = stats.kde.gaussian_kde(sample)
         sample.sort()
-        ax.plot(sample,dist.pdf(sample),label='kde')
+        ax.plot(sample, dist.pdf(sample), label='kde')
         mean,std = sample.mean(), sample.std()
         ax.plot(sample,stats.norm(mean,std).pdf(sample),color='k',label='norm')
         ax.set_title('{} kde distribution'.format(feature), fontdict=self.font1)
@@ -249,9 +266,9 @@ class Numerical:
         return fig
 
     def plot_hist(self, data, feature, ax=None):
-        if ax is None:
-            ax = plt.gca()
-        bins = int(np.sqrt(data.shape[0]))
+        ax = self.get_ax(ax)
+        temp = self.drop_null_item(data,feature)
+        bins = int(np.sqrt(temp.shape[0]))
         _ = ax.hist(data[feature], bins=bins, alpha=0.7)
         ax.set_title('{} distribution'.format(feature), fontdict=self.font2 ) 
         ax.set_xlabel('{}'.format(feature), fontdict=self.font1, labelpad=2)  
@@ -260,14 +277,14 @@ class Numerical:
         
     def plot_hist_line(self, data, feature, target, ax=None):
         '''调用 ax.hist 创建直方图，会返回3个返回值，第一个返回值n就是一个向量，
-记录了这个直方图的每个柱子的高度。而想做叠加的直方图，
-可以再使用一条 ax.hist语句，将bottom设置为上一个图返回的n。
-而bins返回的是每个区间的端点，是一个数组，共含(n+1)个值。'''
-        if ax is None:
-            ax = plt.gca()
+        记录了这个直方图的每个柱子的高度。而想做叠加的直方图，可以再使用一条 ax.hist语句，将bottom设置为上一个图返回的n。
+        而bins返回的是每个区间的端点，是一个数组，共含(n+1)个值。'''
+        ax = self.get_ax(ax)
         X0 = data.loc[data[target]==0, feature]
         X1 = data.loc[data[target]==1, feature]
         bins = int(np.sqrt(min(len(X0),len(X1))))
+        X0 = self.drop_null_item(X0)
+        X1 = self.drop_null_item(X1)
         n1, bins1, _ = ax.hist(X0, bins=bins, alpha=0.6, label='Normal')
         n2, *_ = ax.hist(X1, bins=bins1, alpha=0.6, bottom=n1,
                                     label='Overdue')
@@ -279,7 +296,7 @@ class Numerical:
         xs, ys = (bins1[:-1]+bins1[1:])/2, (n2+odds)/(n1+1)
         axt = ax.twinx()
         axt.plot(xs, ys, marker='*')
-        axt.plot(xs,[odds]*len(xs), color='crimson', alpha=0.8, linestyle='--')
+        axt.axhline(odds, color='crimson', alpha=0.8, linestyle='--')
         axt.set_ylabel('Odds', fontdict=self.font1, labelpad=6)
         return ax
 
