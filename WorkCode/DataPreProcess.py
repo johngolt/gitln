@@ -41,13 +41,12 @@ class FeatureStatistics:
     def _describe_all(self, data):
         length = data.shape[0]
         result = pd.DataFrame(columns=['数据名', '空值比例', '类别数', '高频类别', '高频类别比例'])
-        result['数据名'] = numerical.columns
-        result = self.num.set_index('数据名')
-        result['空值比例'] = pd.isnull(numerical).sum()/length
-        result['类别数'] = numerical.nunique()
-        result['高频类别'] = numerical.apply(
-            lambda x: x.value_counts().sort_values(ascending=False).index[0])
-        result['高频类别比例'] = (numerical == self.num['高频类别']).sum()/length
+        result['数据名'] = data.columns
+        result = result.set_index('数据名')
+        result['空值比例'] = pd.isnull(data).sum()/length
+        result['类别数'] = data.nunique()
+        result['高频类别'] = data.apply(lambda x: x.value_counts().idxmax())
+        result['高频类别比例'] = (data == result['高频类别']).sum()/length
         return result, length
 
     def describe_num(self, numerical, stat=False):
@@ -78,7 +77,8 @@ class FeatureStatistics:
         '''得到类别特征的信息，包括空值、高频值、熵值'''
         self.cat, _ = self._describe_all(categorical)
         self.cat['熵'] = categorical.apply(lambda x: stats.entropy(
-            x.value_counts(normalize=True), base=2))/np.log2(self.cat['类别数'])  # 越接近0代表分布越集中，越接近1代表分布越分散。
+            x.value_counts(normalize=True), base=2))/np.log2(self.cat['类别数'])  
+            # 越接近0代表分布越集中，越接近1代表分布越分散。
         self.cat = self.cat.reset_index()
         return self.cat
 
@@ -253,15 +253,15 @@ class Numerical(CatNum):
         grid = gridspec.GridSpec(nrows=nrows, ncols=2)
         for i, each in enumerate(features):
             ax = fig.add_subplot(grid[i])
-            _ = self.plot_box(self, data, each, ax=ax)
+            _ = self.plot_box(data, each, ax=ax)
         fig.subplots_adjust(wspace=0.5, hspace=0.5)
         return fig
 
     def plot_box(self, data, feature, ax=None):
         ax = self.get_ax(ax)
-        sns.boxplot(data[each], ax=ax, orient='v')
-        ax.set_title('{} boxplot'.format(each), fontdict=self.font2)
-        ax.set_ylabel('{}'.format(each), fontdict=self.font1, labelpad=6)
+        sns.boxplot(data[feature], ax=ax, orient='v')
+        ax.set_title('{} boxplot'.format(feature), fontdict=self.font2)
+        ax.set_ylabel('{}'.format(feature), fontdict=self.font1, labelpad=6)
         return ax
 
     def plot_hists(self, data, features, target):
@@ -311,11 +311,12 @@ class Numerical(CatNum):
         axt.set_ylabel('Odds', fontdict=self.font1, labelpad=6)
         return ax
 
+
 class PlotFunc:
 
-    def get_ax(slef, ax=None):
+    def get_ax(self, ax=None):
         if ax is None:
-            fig = plt.figure(figsize(8,5))
+            fig = plt.figure(figsize=(8,5))
             ax = fig.add_subplot()
             return ax
         return ax
@@ -331,12 +332,13 @@ class PlotFunc:
         ax.set_title('Missing Rate', fontdict={'size': 22})
         ax.set_xticks(data.index)
         ax.set_xticklabels(data['a'], rotation=90,
-                           fontdict={'horizontalalignment': 'right', 'size': 12})
+                        fontdict={'horizontalalignment': 'right', 'size': 12})
 
         for row in data.itertuples():
-            ax.text(row.Index, row.b*1.01, s=round(row.b, 1), horizontalalignment='center',
-                    verticalalignment='bottom', fontsize=14)
+            ax.text(row.Index, row.b*1.01, s=round(row.b, 1), 
+            horizontalalignment='center', verticalalignment='bottom', fontsize=14)
         return ax
+
 
 class Constant(PlotFunc):
 
@@ -455,7 +457,7 @@ class CalEnt:
         else:
             raise TypeError('Feature is not right data type')
 
-    def woe_iv(self, data, feature, target): # 计算WOE, IV值
+    def woe_iv(self, data, feature, target):  # 计算WOE, IV值
         temp = pd.crosstab(data[feature], data[target], normalize='columns')
         woei = np.log((temp.iloc[:, 0]+1e-5)/(temp.iloc[:, 1]+1e-5))
         iv = (temp.iloc[:, 0] - temp.iloc[:, 1])*woei
@@ -463,7 +465,7 @@ class CalEnt:
 
     def woe_ivs(self, data, features, target):
         if isinstance(features, str):
-            return self.woe_iv(data, feature, target)
+            return self.woe_iv(data, features, target)
         elif isinstance(features, Iterable):
             return{each: self.woe_iv(data, each, target) for each in features}
         else:
