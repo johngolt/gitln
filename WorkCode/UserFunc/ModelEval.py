@@ -161,3 +161,51 @@ class PlotCV:
         ax.vlines(mean.argmax(),0,mean.max())
         ax.text(mean.argmax(),mean.max()*1.01,'{:.2f}'.format(mean.max()))
         ax.set_ylim(mean.min()*0.9,mean.max()*1.1)
+
+
+
+import pandas as pd
+import numpy as np 
+import matplotlib.pyplot as plt
+from matplotlib import gridspec
+import seaborn as sns
+from sklearn.base import BaseEstimator, ClassifierMixin,clone
+import scipy.stats as stats 
+import sklearn.metrics as metrics
+from sklearn.model_selection import learning_curve
+
+
+class AveragingModels(BaseEstimator, ClassifierMixin):
+    def __init__(self,models):
+        self.models = models
+
+    def fit(self, X, y):
+        self.models_ = [clone(model) for model in self.models]
+        for model in self.models_:
+            model.fit(X,y)
+        return self
+    
+    def predict(self,X):
+        predictions = np.column_stack([model.predict(X) 
+                                       for model in self.models_])
+        return np.apply_along_axis(lambda x: np.argmax(np.bincount(x)),
+                axis=1, arr=predictions)  
+    
+    def predict_proba(self,X):
+        predictions = np.array([model.predict_proba(X)
+                                      for model in self.models_])
+        return np.mean(predictions, axis=0)
+
+
+
+def plot_pr_curve(y_true, y_pred):
+    AP = metrics.average_precision_score(y_true, y_pred)
+    precision, recall,_ = metrics.precision_recall_curve(y_true,y_pred)
+    fig = plt.figure(figsize=(12,6))
+    ax = fig.add_subplot()
+    ax.step(recall,precision,color='c', where='post',alpha=0.5)
+    ax.fill_between(recall,precision,color='b',alpha=0.2)
+    ax.set(xlabel='Recall',ylabel='Precision',xlim=(0,1.),ylim=(0,1.))
+    ax.set_title('Average Precision Score:{:.2f}'.format(AP),fontsize=16)
+
+

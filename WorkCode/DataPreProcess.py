@@ -1,11 +1,10 @@
-from matplotlib import gridspec
 import pandas as pd
 import numpy as np
 import seaborn as sns
 import scipy.stats as stats
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 from collections.abc import Iterable
+from matplotlib import gridspec
 
 plt.rcParams['font.family'] = ['sans-serif']
 plt.rcParams['font.sans-serif'] = ['SimHei']  # 可以显示中文
@@ -13,8 +12,7 @@ plt.rcParams['axes.unicode_minus'] = False  # 可以显示负号
 
 
 def split_cat_num(data, cat=15):
-    '''对特征进行分类，得到数值特征和类别特征，对于数值特征中取值较少的特征，将其
-    归为类别特征中。'''
+    '''对特征进行分类，得到数值特征和类别特征，对于数值特征中取值较少的特征，将其归为类别特征中。'''
     categorical = data.select_dtypes(include='object')
     numerical = data.select_dtypes(exclude='object')
     nunique = numerical.nunique().sort_values(ascending=True)
@@ -74,11 +72,10 @@ class FeatureStatistics:
         return stat
 
     def describe_cat(self, categorical):
-        '''得到类别特征的信息，包括空值、高频值、熵值'''
+        '''得到类别特征的信息，包括空值、高频值、熵值越接近0代表分布越集中，越接近1代表分布越分散。'''
         self.cat, _ = self._describe_all(categorical)
         self.cat['熵'] = categorical.apply(lambda x: stats.entropy(
             x.value_counts(normalize=True), base=2))/np.log2(self.cat['类别数'])  
-            # 越接近0代表分布越集中，越接近1代表分布越分散。
         self.cat = self.cat.reset_index()
         return self.cat
 
@@ -361,11 +358,9 @@ class Constant(PlotFunc):
             col_most_values[col] = value_counts.max()/records_count
             col_large_value[col] = value_counts.idxmax()
 
-        most_values_df = pd.DataFrame.from_dict(
-            col_most_values, orient='index')  # 字典的key为index
+        most_values_df = pd.DataFrame.from_dict(col_most_values, orient='index')  # 字典的key为index
         most_values_df.columns = ['max percent']
-        most_values_df = most_values_df.sort_values(
-            by='max percent', ascending=False)
+        most_values_df = most_values_df.sort_values(by='max percent', ascending=False)
         return most_values_df, col_large_value
 
     def plot_frequency(self, data, N=30):
@@ -600,6 +595,135 @@ class Missing(PlotFunc):
         self.indicator_ = index2
         return result2
 
+
+class FeatureStability:
+    '''可视化特征在训练集和测试集上的分布，可以用来发现不稳定的特征。也可以用来可视化特征在不同类别的特征，
+    用来选取重要特征或者删除不重要特征。通过函数发现训练和测试集分布不一致的特征，返回不一致的特征'''
+
+    def __init__(self, threshold=0.05):
+        self.pvalue = threshold
+
+    def num_stab_test(self, train, test, feature=None):  # 检验数值特征在训练集和测试集分布是否一致,ks检验
+        '''Compute the Kolmogorov-Smirnov statistic on 2 samples.'''
+        if feature is None:
+            _, pvalue = stats.ks_2samp(train, test)
+        else:
+            _, pvalue = stats.ks_2samp(train[feature], test[feature])
+        return pvalue
+    
+    def num_stab_tests(self, train, test, features):
+        values = [self.num_stab_test(train, test, feature) for feature in features]
+        mask = [value > self.pvalue for value in values]
+        return mask, values
+    
+    def get_value_count(self, train, test, feature=None, normalize=True):
+        if feature is None:
+            count = train.value_counts(normalize=normalize)
+            count1 = test.value_counts(normalize=normalize)
+        else:
+            count = train[feature].value_counts(normalize=normalize)
+            count1 = test[feature].value_counts(normalize=normalize)
+        index = count.index|count1.index
+        if normalize:
+            count = count.reindex(index).fillna(1e-3)
+            count1 = count1.reindex(index).fillna(1e-3)
+        else:
+            count = count.reindex(index).fillna(1)
+            count1 = count1.reindex(index).fillna(1)
+        return count, count1
+    
+    def psi(self, train, test, feature=None): # Population Stability Index
+        '''PSI大于0.1则视为不太稳定。'''
+        count, count1 = self.get_value_count(train, test, feature)
+        res = (count1 - count)*np.log(count1/count)
+        return res.sum()
+    
+    def psis(self, train, test, features):
+        value = [self.psi(train, test, feature) for feature in features]
+        res = pd.Series(value, index=features)
+        return res
+    
+    def cat_stab_test(self, train, test, feature=None):  # 检验类别特征在训练集和测试集分布是否一致。chi2检验
+        count, count1 = self.get_value_count(train, test, feature,normalize=False)
+        data = pd.concat([count,count1],axis=1)
+        _, pvalue,*_ = stats.chi2_contingency(data.to_numpy().T, correction=False)
+        return pvalue
+    
+    def cat_stab_tests(self, train, test, features):
+        values = [self.cat_stab_test(train, test, feature) for feature in features]
+        mask = [value > self.pvalue for value in values]
+        return mask, values
+
+    def get_labels(self, labels=None):
+        if labels is None:
+            label1, label2 = 'Train', 'Test'
+            return label1, label2
+        elif isinstance(labels, Iterable) and len(labels)>=2:
+            label1, label2 = labels[0], labels[1]
+            return label1, label2
+        else:
+            raise ValueError('labels is wrong!')
+    
+    def plot_train_test_num(self, train, test, features, labels=None):
+        label1, label2 = self.get_labels(labels)
+        if isinstance(features, str):
+            fig = plt.figure(figsize=(8,6))
+            ax = fig.add_subplot()
+            fig.suptitle('Distribution of values in {} and {}'.format(label1, label2), fontsize=16)
+            ax.set_title('Distribution of {}'.format(features))
+            sns.distplot(train[features], color="green", kde=True, bins=50, label=label1, ax=ax)
+            sns.distplot(test[features], color="blue", kde=True, bins=50, label=label2, ax=ax)
+            plt.legend(loc=2)
+        elif isinstance(features, list):
+            nrows=len(features)//4+1
+            fig = plt.figure(figsize=(20,5*nrows))
+            fig.suptitle('Distribution of values in {} and {}'.format(label1, label2), 
+                         fontsize=16, horizontalalignment='right')
+            grid = gridspec.GridSpec(nrows, 4)
+            for i, each in enumerate(features):
+                ax = fig.add_subplot(grid[i])
+                sns.distplot(train[each], color="green", kde=True, bins=50, label=label1, ax=ax)
+                sns.distplot(test[each], color="blue", kde=True, bins=50, label=label2, ax=ax)
+                ax.set_xlabel('')
+                plt.legend(loc=2)
+                ax.set_title('Distribution of {}'.format(each))
+                plt.legend(loc=2)
+        else:
+            raise TypeError('{} is not right datatype'.format(type(features)))
+
+    def get_melt(self, train, test, feature, labels):
+        res = train[feature].value_counts(normalize=True)
+        res1 = test[feature].value_counts(normalize=True)
+        data = pd.concat([res,res1], axis=1).fillna(0)
+        data.columns = labels
+        data = data.reset_index()
+        melt = pd.melt(data, id_vars='index')
+        return melt
+
+    def plot_train_test_cat(self, train, test, features, labels=None):
+        label1, label2 = self.get_labels(labels)
+        if isinstance(features, str):
+            fig = plt.figure(figsize=(8,6))
+            ax = fig.add_subplot()
+            fig.suptitle('Distribution of values in {} and {}'.format(label1, label2), fontsize=16)
+            ax.set_title('{}'.format(features))
+            melt = self.get_melt(train, test, features, [label1, label2])
+            sns.barplot(x='index',y='value', data=melt, hue='variable', ax=ax)
+            plt.legend(loc=2)
+        elif isinstance(features, list):
+            nrows = len(features)//4 + 1
+            fig = plt.figure(figsize=(20, 5*nrows))
+            fig.suptitle('Distribution of values in {} and {}'.format(label1, label2), 
+                         fontsize=16, horizontalalignment='right')
+            grid = gridspec.GridSpec(nrows, 4)
+            for i, each in enumerate(features):
+                ax = fig.add_subplot(grid[i])
+                melt = self.get_melt(train, test, each, [label1, label2])
+                sns.barplot(x='index',y='value', data=melt, hue='variable', ax=ax)
+                ax.set_title('{}'.format(each))
+                plt.legend(loc=2)
+        else:
+            raise TypeError('{} is not right datatype'.format(type(features)))
 
 
 class Outlier:
