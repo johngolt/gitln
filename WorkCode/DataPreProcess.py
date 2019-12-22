@@ -675,8 +675,8 @@ class FeatureStability:
             sns.distplot(test[features], color="blue", kde=True, bins=50, label=label2, ax=ax)
             plt.legend(loc=2)
         elif isinstance(features, list):
-            nrows=len(features)//4+1
-            fig = plt.figure(figsize=(20,5*nrows))
+            nrows = len(features)//4+1
+            fig = plt.figure(figsize=(20, 5*nrows))
             fig.suptitle('Distribution of values in {} and {}'.format(label1, label2), 
                          fontsize=16, horizontalalignment='right')
             grid = gridspec.GridSpec(nrows, 4)
