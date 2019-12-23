@@ -30,24 +30,26 @@ class Split:
     def split(self, data, feature, target=None, bins=None):  # 对序列进行分箱。有监督和无监督。
         ser = self.get_series(data, feature, target)
         bins = self.get_bins(bins)
-        res, points = self._split(ser, bins, feature=feature, target=target)
+
+        res, points = self._split(ser, bins, feature=feature, target=target) # 如何对连续特征进行分箱。
+
         points[0], points[-1] = -np.inf, np.inf
         mapping = {key:value for value,key in enumerate(res.cat.categories)}
         res = res.cat.rename_categories(mapping)
         return res, points, mapping
     
-    def splits(self, data, features, target=None, bins=None):  # 对多个连续特征进行分箱。有监督和无监督
+    def splits(self, data, features, target=None, bins=None):  # 对单或多个连续特征进行分箱。有监督和无监督
         bins = self.get_bins(bins)
         self.splitpoints = {}
         self.mappings = {}
         if isinstance(features, str):
-            res, points, mapping = self.split(data, features, bins)
+            res, points, mapping = self.split(data, features, target, bins)
             self.splitpoints[features] = points
             self.mappings[features] = mapping
             return res
         result = []
         for feature in features:
-            res, points, mapping = self.split(data, feature, bins)
+            res, points, mapping = self.split(data, feature, target, bins)
             self.splitpoints[feature] = points
             self.mappings[features] = mapping
             result.append(res)
@@ -55,12 +57,12 @@ class Split:
         return result
 
 class FreqSplit(Split):
-    def _split(self, ser, bins):
+    def _split(self, ser, bins, feature=None, target=None):
         res, points = pd.cut(ser, bins=bins, retbins=True)
         return res, points
 
 class LengthSplit(Split):
-    def _split(self, ser, bins):
+    def _split(self, ser, bins, feature=None, target=None):
         res, points = pd.qcut(ser, q=bins, duplicates='drop', retbins=True)
         return res, points
 
