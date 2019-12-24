@@ -1,3 +1,130 @@
+#### Indexing and selecting data
+
+Object selection has had a number of user-requested additions in order to support more explicit location based indexing. Pandas now supports three types of multi-axis indexing.
+
+- `.loc` is primarily label based, but may also be used with a boolean array. `.loc` will raise `KeyError` when the items are not found. Allowed inputs are: A single label; A list or array of labels; A slice object with labels 'a':'f', Note that contrary to usual python slices, both the start and the stop are included, when present in the index; A boolean array; A callable function with one argument and that returns valid output for indexing.
+
+- `.iloc` is primarily integer position based, but may also be used with a boolean array. `.iloc` will raise `IndexError` if a requested indexer is out-of-bounds, except slice indexers which allow out-of-bounds indexing. Allowed inputs are: An integer; A list or array of integers; A slice object with ints; A boolean array; A callable function with one argument and that returns valid output for indexing.
+
+###### Selection by label
+
+When using `.loc` with slices, if both the start and the stop labels are present in the index, then elements located between the two (including them) are returned. If at least one of the two is absent, but the index is sorted, and can be compared against start and stop labels, then slicing will still work as expected, by selecting labels which rank between the two:
+
+```python
+s = pd.Series(list('abcde'), index=[0, 3, 2, 5, 4])
+s.sort_index().loc[1:6]
+```
+
+`.loc`, `.iloc`, and also `[]` indexing can accept a `callable` as indexer. The `callable` must be a function with one argument (the calling Series or DataFrame) that returns valid output for indexing.
+
+```python
+s = pd.Series([1, 2, 3])
+s.reindex([1, 2, 3]) # Having a duplicated index will raise error for a .reindex()
+s.loc[s.index.intersection([1,2,3])]  # select only valid keys
+```
+
+###### Selecting random samples
+
+A random selection of rows or columns from a Series or DataFrame with the `sample()` method. The method will sample rows by default, and accepts a specific number of rows/columns to return, or a fraction of rows. By default, sample will return each row at most once, but one can also sample with replacement using the `replace` option. By default, each row has an equal probability of being selected, but if you want rows to have different probabilities, you can pass the `sample` function sampling weights as `weights`. Missing values will be treated as a weight of zero, and inf values are not allowed. If weights do not sum to 1, they will be re-normalized by dividing all weights by the sum of the weights. When applied to a DataFrame, you can use a column of the DataFrame as sampling weights by simply passing the name of the column as a string. sample also allows users to sample columns instead of rows using the `axis` argument. Finally, one can also set a seed for sample’s random number generator using the `random_state` argument. 
+
+###### Boolean indexing
+
+If you only want to access a scalar value, the fastest way is to use the `at` and `iat` methods, which are implemented on all of the data structures. Similarly to `loc`, at provides label based scalar lookups, while, `iat` provides integer based lookups analogously to `iloc`.
+
+Another common operation is the use of boolean vectors to filter the data. The operators are: `|` for or, `&` for and, and `~` for not. These must be grouped by using parentheses, since by default Python will evaluate an expression such as `df.A > 2 & df.B < 3` as `df.A > (2 & df.B) < 3`. Using a boolean vector to index a Series works exactly as in a NumPy. You may select rows from a DataFrame using a boolean vector the same length as the DataFrame’s index.
+
+Consider the `isin()` method of Series, which returns a boolean vector that is true wherever the Series elements exist in the passed list. This allows you to select rows where one or more columns have values you want. DataFrame also has an `isin()` method. When calling `isin`, pass a set of values as either an array or `dict`. If values is an array, `isin` returns a DataFrame of booleans that is the same shape as the original DataFrame, with True wherever the element is in the sequence of values. Oftentimes you’ll want to match certain values with certain columns. Just make values a `dict` where the key is the column, and the value is a list of items you want to check for. Combine DataFrame’s `isin` with the `any()` and `all()` methods to quickly select subsets of your data that meet a given criteria. 
+
+###### The `where()` Method and Masking
+
+Selecting values from a Series with a boolean vector generally returns a subset of the data. To guarantee that selection output has the same shape as the original data, you can use the `where` method in Series and DataFrame. In addition, `where` takes an optional `other` argument for replacement of values where the condition is `False`, in the returned copy. By default, `where` returns a modified copy of the data. There is an optional parameter `inplace` so that the original data can be modified without creating a copy. `Where` can also accept `axis` and `level` parameters to align the input when performing the `where`. `Where` can accept a callable as condition and other arguments. The function must be with one argument (the calling Series or DataFrame) and that returns valid output as condition and other argument. `mask()` is the inverse boolean operation of `where`.
+
+```python
+df2.where(df2 > 0, df2['A'], axis='index')
+df3.where(lambda x: x > 4, lambda x: x + 10)
+```
+
+###### The `query()` Method
+
+```python
+df = pd.DataFrame(np.random.rand(n, 3), columns=list('abc'))
+df.query('(a < b) & (b < c)')
+# If instead you don’t want to or cannot name your index, you can use the name index in your query expression.
+df.query('index < b < c')
+df.query('[1, 2] in c')
+```
+
+If the name of your index overlaps with a column name, the column name is given precedence. You can still use the index in a query expression by using the special identifier ‘index’. You can also use the `levels` of a DataFrame with a MultiIndex as if they were columns in the frame. If the `levels` of the MultiIndex are unnamed, you can refer to them using special names. The convention is `ilevel_0`, which means “index level 0” for the 0th level of the index. `query()` also supports special use of Python’s `in` and `not in` comparison operators, providing a succinct syntax for calling the `isin` method of a Series or DataFrame. Comparing a list of values to a column using `==/!=` similarly to `in/not in`.
+
+##### Duplicate data
+
+If you want to identify and remove duplicate rows in a DataFrame, there are two methods that will help: `duplicated` and `drop_duplicates`. Each takes as an argument the columns to use to identify duplicated rows. `duplicated` returns a boolean vector whose length is the number of rows, and which indicates whether a row is duplicated.
+`drop_duplicates` removes duplicate rows. By default, the first observed row of a duplicate set is considered unique, but each method has a `keep` parameter to specify targets to be kept.
+
+- keep='first' (default): mark / drop duplicates except for the first occurrence.
+- keep='last': mark / drop duplicates except for the last occurrence.
+- keep=False: mark / drop all duplicates.
+
+Also, you can pass a list of columns to identify duplications. Each of Series or DataFrame have a `get` method which can return a default value.
+
+Indexes are “mostly immutable”, but it is possible to set and change their metadata, like the index name or, for MultiIndex, levels and codes. You can use the `rename, set_names, set_levels`, and `set_codes` to set these attributes directly. They default to returning a copy; however, you can specify `inplace=True` to have the data change in place. The two main operations are union (|) and intersection (&). These can be directly called as instance methods or used via overloaded operators. Difference is provided via the `.difference` method. When performing `Index.union()` between indexes with different dtypes, the indexes must be cast to a common dtype. Typically, though not always, this is object dtype. The exception is when performing a union between integer and float data. In this case, the integer values are converted to float. DataFrame has a `set_index()` method which takes a column name or a list of column names. To create a new, re-indexed DataFrame. As a convenience, there is a new function on DataFrame called `reset_index()` which transfers the index values into the DataFrame’s columns and sets a simple integer index. This is the inverse operation of `set_index()`. You can use the `level` keyword to remove only a portion of the index.
+
+#### Merge, join and concatenate
+
+###### Concatenating objects
+
+The `concat()` function does all of the heavy lifting of performing concatenation operations along an axis while performing optional set logic (union or intersection) of the indexes (if any) on the other axes. Note that I say “if any” because there is only a single possible axis of concatenation for Series.
+
+```python
+ result = pd.concat(frames, keys=['x', 'y', 'z'])
+```
+
+![](../picture/1/152.png)
+
+When gluing together multiple DataFrames, you have a choice of how to handle the other axes. This can be done in the following two ways: Take the union of them all, join='outer'. Take the intersection, join='inner'.
+
+```python
+result = pd.concat([df1, df4], axis=1).reindex(df1.index)
+```
+
+![](../picture/1/153.png)
+
+A useful shortcut to `concat()` are the `append()` instance methods on Series and DataFrame. These methods actually predated `concat`. They concatenate along `axis=0`, namely the index. For `DataFrame` objects which don’t have a meaningful index, you may wish to append them and ignore the fact that they may have overlapping indexes. To do this, use the `ignore_index` argument. You can concatenate a mix of `Series` and `DataFrame` objects. The `Series` will be transformed to `DataFrame` with the column name as the name of the `Series`. If unnamed `Series` are passed they will be numbered consecutively. Passing `ignore_index=True` will drop all name references. A fairly common use of the `keys` argument is to override the column names when creating a new `DataFrame` based on existing `Series`. Notice how the default behaviour consists on letting the resulting `DataFrame` inherit the parent `Series`’ name, when these existed. Through the `keys` argument we can override the existing column names. You can also pass a dict to `concat` in which case the dict keys will be used for the `keys` argument (unless other keys are specified)
+
+pandas provides a single function, `merge()`, as the entry point for all standard database join operations between DataFrame or named Series objects. If left is a DataFrame or named Series and right is a subclass of DataFrame, the return type will still be DataFrame. `merge` is a function in the pandas namespace, and it is also available as a DataFrame instance method `merge()`, with the calling DataFrame being implicitly considered the left object in the join. The related `join()` method, uses merge internally for the index-on-index and column(s)-on-index join. If you are joining on index only, you may wish to use `DataFrame.join` to save yourself some typing.
+ There are several cases to consider which are very important to understand: one-to-one joins, many-to-one joins, many-to-many joins.
+In SQL / standard relational algebra, if a key combination appears more than once in both tables, the resulting table will have the Cartesian product of the associated data.
+The `how` argument to merge specifies how to determine which keys are to be included in the resulting table. If a key combination does not appear in either the left or right tables, the values in the joined table will be NA.
+
+Users can use the `validate` argument to automatically check whether there are unexpected duplicates in their merge keys. Key uniqueness is checked before merge operations and so should protect against memory overflows. Checking key uniqueness is also a good way to ensure user data structures are as expected.
+
+```python
+result = pd.merge(left, right, on='B', how='outer', validate="one_to_one")
+pd.merge(left, right, on='B', how='outer', validate="one_to_many")
+```
+
+You can join a singly-indexed DataFrame with a level of a MultiIndexed DataFrame. The level will match on the name of the index of the singly-indexed frame against a level name of the MultiIndexed frame. Strings passed as the `on, left_on`, and `right_on` parameters may refer to either column names or index level names. This enables merging DataFrame instances on a combination of index levels and columns without resetting indexes. The merge `suffixes` argument takes a tuple of list of strings to append to overlapping column names in the input DataFrames to disambiguate the result columns.
+
+#### Reshaping and pivot tables
+
+![](../picture/1/154.png)
+
+`pivot()` will error with a `ValueError`: Index contains duplicate entries, cannot reshape if the index/column pair is not unique. In this case, consider using `pivot_table()` which is a generalization of pivot that can handle duplicate values for one index/column pair.
+
+If the columns have a `MultiIndex`, you can choose which level to stack. The stacked level becomes the new lowest level in a `MultiIndex` on the columns. With a “stacked” `DataFrame` or `Series` (having a `MultiIndex` as the `index`), the inverse operation of `stack` is `unstack`, which by default unstacks the **last level**:
+
+![](../picture/1/155.png)
+
+![](../picture/1/156.png)
+
+If the indexes have names, you can use the level names instead of specifying the level numbers. Notice that the `stack` and `unstack` methods implicitly sort the index levels involved. Hence a call to `stack` and then `unstack`, or vice versa, will result in a **sorted** copy of the original `DataFrame` or `Series`. You may also stack or unstack more than one level at a time by passing a list of levels, in which case the end result is as if each level in the list were processed individually. The list of levels can contain either level names or level numbers. Unstacking can result in missing values if subgroups do not have the same set of labels. By default, missing values will be replaced with the default fill value for that data type, `NaN` for float.
+
+![](../picture/1/157.png)
+
+![](../picture/1/158.png)
+
+The top-level `melt()` function and the corresponding `DataFrame.melt()` are useful to massage a DataFrame into a format where one or more columns are identifier variables, while all other columns, considered measured variables, are “unpivoted” to the row axis, leaving just two non-identifier columns, “variable” and “value”. The names of those columns can be customized by supplying the `var_name` and `value_name` parameters.
+
 ##### Computational tools
 
 ###### Statistical functions
