@@ -1,6 +1,50 @@
 import pandas as pd 
 import numpy as np 
 from sklearn.preprocessing import OneHotEncoder
+class Encode:
+    def __init__(self):
+        self.mapping_ = {}
+
+    @abstractmethod
+    def _encode(self, data, feature, y, **kwargs):
+        pass
+
+    def process(self, data, feature, enc):
+        if callable(enc):
+            result = enc(data[feature])
+        else:
+            result = data[feature].map(enc)
+        return result
+    
+    def encode(self, data, feature, y=None, **kwargs):
+        enc = self._encode(data, feature, y, **kwargs)
+        result = self.process(self, data, feature, enc)
+        return result
+
+    def fit(self, X, y, **kwargs):
+        features = X.columns
+        result = X.copy()
+        for feature in features:
+            self.mapping_[feature] = self._encode(result, feature, y, **kwargs)
+        return self
+
+    def transform(self, X, **kwargs):
+        features = X.columns
+        result = X.copy()
+        for feature in features:
+            result[feature] = self.process(result, feature, self.mapping_[feature])
+        return result
+
+    def fit_transform(self, X, y, **kwargs):
+        _ = self.fit(X, y, **kwargs)
+        result = self.transform(self, X, **kwargs)
+        return result
+
+class OneHot(Encode):
+    def _encode(self, data, feature, y):
+        enc = OneHotEncoder(categories='auto', handle_unknown='ignore')
+        return enc.fit
+
 
 
 class Encoding: 
