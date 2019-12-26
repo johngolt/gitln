@@ -10,7 +10,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from abc import abstractmethod
 from functools import partial
-
+import re
+from sklearn.preprocessing import OneHotEncoder
 
 class ReadData:
 
@@ -272,3 +273,94 @@ class PercentTruc(OutlierPro):
         low = series.quantile(0.01)
         high = series.quantile(0.99)
         return low, high
+
+
+class Encode:
+    '''对类别特征进行编码，具体的编码方式由子类来实现。'''
+    def __init__(self):
+        self.mapping_ = {}  # 保存编码的映射。
+
+    @abstractmethod
+    def _encode(self, data, feature, y=None, **kwargs):
+        '''由子类实现具体的编码映射。'''
+        pass
+
+    def process(self, data, feature, mapping):
+        '''具体实现类别特征的编码，不同的编码方式处理方式可能不同，这个可以根据具体
+        的编码方式来决定子类是否重写此方法，如果是一对一的编码，则不需要，如果像onehot那种一对多则
+        需要重写此方法。'''
+        result = data[feature].map(mapping)
+        return result
+    
+    def encode(self, data, feature, y=None, **kwargs):
+        '''实现特征编码的函数。'''
+        enc = self._encode(data, feature, y, **kwargs)
+        result = self.process(data, feature, enc)
+        return result
+
+    def fit(self, X, y=None, **kwargs):
+        '''对多个特征进行编码，同时为了与sklearn保持一致。'''
+        features = X.columns
+        result = X.copy()
+        for feature in features:
+            self.mapping_[feature] = self._encode(result, feature, y, **kwargs)
+        return self
+
+    def transform(self, X):
+        features = X.columns
+        result =[]
+        for feature in features:
+            result.append(self.process(result, feature, self.mapping_[feature]))
+        res = pd.concat(result, axis=1)
+        return res
+
+    def fit_transform(self, X, y=None, **kwargs):
+        _ = self.fit(X, y, **kwargs)
+        result = self.transform(X)
+        return result
+
+
+class OneHot(Encode):  # OneHotEncode
+    def _encode(self, data, feature, y=None):
+        enc = OneHotEncoder(categories='auto', handle_unknown='ignore')
+        enc.fit(data.loc[:,[feature]])
+        return enc
+
+    def process(self, data, feature, enc):
+        result = enc.transform(data.loc[:,[feature]]).toarray()
+        columns = enc.get_feature_names()
+        func = partial(re.sub, 'x0', feature)
+        columns = list(map(func, columns))
+        result.columns = columns
+        return result
+
+class CountEncode(Encode):  # Count-Encode
+    def _encode(self, data, feature, y=None, normalize=False):
+        temp = data[feature].value_counts() 
+        if normalize:
+            mapping = temp/temp.max()
+        else:
+            mapping = temp
+        return mapping
+
+class LabelCountEncode(Encode):  # LabelCount-Encode
+    def _encode(self, data, feature, y=None, ascending=False):
+        mapping = data[feature].value_counts().rank(method='min', 
+                                      ascending=ascending)
+        return mapping
+
+class TargetEncode(Encode):  # Target-Encode
+    def _encode(self, data, feature, y=None):
+        temp = pd.concat([data,y],axis=1)
+        name = y.name
+        mapping = temp.groupby(feature)[name].mean()
+        return mapping
+
+class MeanEncode(Encode):  # Mean-Encode
+    def _encode(self, data, feature, y=None):
+        mean = y.mean()
+        name = y.name
+        df = pd.concat([data[feature], y],axis=1)
+        mapping = df.groupby(feature)[name].mean()
+        mapping = mapping + mean
+        return mapping
