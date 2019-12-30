@@ -1,13 +1,13 @@
-from sklearn.model_selection import StratifiedKFold, KFold
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import roc_curve, auc
-import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import scipy.stats as stats
 import minepy
 import seaborn as sns
+from sklearn.model_selection import StratifiedKFold, KFold
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import roc_curve, auc
+import matplotlib.pyplot as plt
 from scipy.spatial.distance import pdist, squareform
 from sklearn.feature_selection import RFECV, GenericUnivariateSelect
 from sklearn.ensemble import RandomForestClassifier
@@ -16,21 +16,24 @@ from sklearn import clone
 
 
 class Relation:
-
+    '''计算相关系数的抽象基类。'''
     def pd2array(self, X):
+        '''将DataFrame转化为ndarray，同时记录下columns和columns长度。'''
         columns = X.columns
-        values = X.to_numpy()
-        return values, columns, X.shape[1]
+        arr = X.to_numpy()
+        return arr, columns, X.shape[1]
 
     def computeft(self, X, y, func):
-        columns, arr, n = self.pd2array(X)
+        '''计算特征变量和目标变量之间的相关系数。'''
+        arr, columns, n = self.pd2array(X)
         yarr = y.to_numpy()
         data = np.array(func(arr[:,j], yarr)[0] for j in range(n))
         result = pd.Series(data, index=columns)
         return result
 
     def computeff(self, X, func):
-        columns, arr, n = self.pd2array(X)
+        '''计算特征变量与特征变量之间的相关系数。'''
+        arr, columns, n = self.pd2array(X)
         try:
             result, _ = func(X)
         except:
@@ -40,20 +43,21 @@ class Relation:
         return result
 
     @abstractmethod
-    def ftrelation(self, X, y):
+    def ftrelation(self, X, y):  # 计算特征变量与目标变量之间的相关系数
         pass
 
-    @abstractmethod
-    def ffrelation(self, X):
+    @abstractmethod  
+    def ffrelation(self, X):  # 计算特征变量之间的相关系数。
         pass
 
-    def relation(self, X, y=None):
+    def relation(self, X, y=None):  # 计算相关系数的接口。
         if y is None:
             return self.ffrelation(X)
         else:
             return self.ftrelation(X, y)
 
     def plot_ft(self, data):
+        '''可视化特征变量和目标变量之间的相关系数，也可以用来可视化Series序列。'''
         _, ax = plt.subplots(figsize=(8,5))
         data=data.sort_values().reset_index()  # 特征与label之间的相关性的可视化。
         data.columns=['a','b']
@@ -72,12 +76,14 @@ class Relation:
                     horizontalalignment= 'center', verticalalignment='bottom', fontsize=14)
 
     def plot_ff(self, data):
+        '''用热力图来可视化特征变量与特征变量之间的相关系数。也可以用来绘制其他的热力图。'''
         _, ax = plt.subplots(figsize=(8,5))
         sns.heatmap(data, xticklabels=data.columns, yticklabels=data.columns, cmap='RdYlGn',
             center=0, annot=True,ax=ax)
         ax.set_title('Correlogram Heatmap')
     
     def plot_relation(self, X, y=None):
+        '''可视化相关系数的接口函数。'''
         if y is None:
             data = self.ffrelation(X)
             self.plot_ff(data)
@@ -85,15 +91,15 @@ class Relation:
             data = self.ftrelation(X, y)
             self.plot_ft(data)
 
-class Pearson(Relation):
+class Pearson(Relation):  # 皮尔逊相关系数。
     def ftrelation(self, X, y):
         return self.computeft(X, y, func=stats.pearsonr)
     def ffrelation(self, X):
         return self.computeff(X, func=stats.pearsonr)
 
-class MICRelation(Relation):
+class MICRelation(Relation):  # 最大信息系数。
     def ftrelation(self, X, y):
-        columns, arr, _ = self.pd2array(X)
+        arr, columns, _ = self.pd2array(X)
         arr=arr.transpose(1,0)
         yarr = y.to_numpy()[None,:]
         result,_ = minepy.cstats(arr,yarr)
@@ -101,13 +107,13 @@ class MICRelation(Relation):
         return result
 
     def ffrelation(self, X):
-        columns, arr, n = self.pd2array(X)
+        arr, columns, n = self.pd2array(X)
         arr = arr.transpose(1,0)
-        mic = minepy.pstats(arr)+np.identity(n)
+        mic = squareform(minepy.pstats(arr)[0])+np.identity(n)
         result = pd.DataFrame(mic, columns=columns, index=columns)
         return result
 
-class DistRelation(Relation):
+class DistRelation(Relation):  # 距离相关系数。
 
     def _distcorr(self, X, Y):
         X, Y, n = X[:, None], Y[:, None], X.shape[0] 
@@ -143,7 +149,8 @@ class FSelection:
         return to_select
 
     def fit(self, X, y=None, **kwargs):
-        self.mask = self.filtermask(X, y, **kwargs)
+        mask = self.filtermask(X, y, **kwargs)
+        self.mask = list(map(bool, mask))
         return self
 
     def transform(self, X):
@@ -164,21 +171,72 @@ class FilterSelect(FSelection):
         '''得到每个特征的重要性。'''
         pass
 
-    def filtermask(self, X, y=None, ascending=False, to_select=None):
-        '''根据每个特征的得分，产生0-1掩码，ascending参数为True表示得分越高越重要，False表示
-        得分越低越重要。'''
+    def get_importances(self, X, y=None, isabs=True):
+        '''得到特征的重要性。'''
         features = X.columns
-        n = self.getnumber(X, to_select)
         scores = [self.get_importance(X, feature, y) for feature in features]
+        if isabs:
+            return np.fabs(scores)
+        else:
+            return np.array(scores)
+
+    def filtermask(self, X, y=None, ascending=False, to_select=None, isabs=True):
+        '''根据每个特征的得分，产生0-1掩码，ascending参数为True表示得分越高越重要，False表示
+        得分越低越重要。to_select确定特征选择后的特征数量，如果为None则保留一般的特征，isabs是确定
+        正负号对特征重要性的影响，如果知识绝对值的大小决定特征的重要性，则为True。'''
+        n = self.getnumber(X, to_select)
+        scores = self.get_importances(X, y, isabs)
         mask = np.zeros(X.shape[1])
-        index = np.array(scores).argsort()
+        index = scores.argsort()
         if ascending:
             select = index[-n:]
         else:
             select = index[:n]
         mask[select] = 1
         return mask 
-        
+    
+    def plot_importances(self, X, y=None, ascending=False, to_select=None, isabs=True):
+        mask = self.filtermask(X, y, ascending, to_select, isabs)
+
+        scores = self.get_importances(X, y, isabs)
+        score = pd.Series(scores, name='score', index=X.columns)
+        colors = ['red' if ma else 'blue' for ma in mask]
+        color = pd.Series(colors, name='color', index=X.columns)
+
+        data = pd.concat([score, color], axis=1)
+        data.index.name='index'
+        data.reset_index(inplace=True)
+
+        fig = plt.figure(figsize=(9,6), dpi= 80)
+        ax = fig.add_subplot(111)
+
+        ax.vlines(x=data.index, ymin=0, ymax=data['score'], color=data['color'], 
+                         alpha=0.4, linewidth=5)
+
+        for x, y, tex, color in zip(data.index,data['score'], data['score'], data['color']):
+            _ = plt.text(x, y, round(tex, 3), horizontalalignment='center', 
+                    verticalalignment='center', fontdict={'color':color, 'size':8})
+
+        ax.set(ylabel='$Value$', xlabel='$Columns$')
+        plt.xticks(data.index, data['index'], fontsize=9, rotation=90)
+        ax.set_title('Importances Graph', fontdict={'size':18})
+        ax.grid(linestyle='--', alpha=0.5)
+
+
+class CoreSelect(FilterSelect):
+    '''子类中可以重新改写filtermask，从而修改默认参数，使得在fit时减少参数的输入，也可以在fit时设定参数。'''
+    def get_importance(self, X, feature, y):
+        value = stats.kendalltau(X[feature], y)[0]
+        return value
+    def filtermask(self, X, y=None, ascending=True, to_select=None, isabs=True):
+        result = super().filtermask(X, y, ascending, to_select, isabs)
+        return result
+
+fs = CoreSelect()
+#fs.fit(train, y)
+# 也可以不在子类中重新改写filtermask，而在fit时设定参数
+#fs.fit(train, y, ascending=True)
+
 
 class WrapperSelect(FSelection):
     def __init__(self, clf, scoring, n=5, imbalance=False):
@@ -223,25 +281,26 @@ class WrapperSelect(FSelection):
         else:
             raise ValueError('子类实现的方法返回值不满足:[0,1]序列或特征的子集的条件。')
 
+
 class ImportanceSelect(WrapperSelect):
     def get_thres(self, X, y):
+        '''得到不同特征的重要程度和最小值。'''
         est = clone(self.clf)
         est.fit(X.to_numpy(), y)
         if hasattr(est, 'coef_'):
             importance = est.coef_
-        elif hasattr(est, 'feature_importance_'):
-            importance = est.feature_importance_
+        elif hasattr(est, 'feature_importances_'):
+            importance = est.feature_importances_
         else:
             raise AttributeError('{} do not has coef_ or feature_importance_'.format(
                                                    self.clf.__class__.__name__))
-        thres = np.array(set(importance))
-        thres.sort()
-        return importance, thres[0]
+        return importance, importance.min()
 
     def choose(self, X, y, to_select=None):
+        '''不断出去最不重要的特征，最终选取结果最好的作为最终选择的特征进行后续建模。'''
         n = self.getnumber(X, to_select)
         result = X.copy()
-        mean, std = self.get_score(result, y)[0]
+        mean, std = self.get_score(result, y)
         means = [mean]
         stds = [std]
         maxi = means[0]
@@ -253,18 +312,22 @@ class ImportanceSelect(WrapperSelect):
             mean, std = self.get_score(result, y)
             means.append(mean)
             stds.append(std)
-            if mean > maxi:
+            if mean > maxi-0.001:
                 maxi = mean
                 subfeatures = result.columns
-        return subfeatures, means, stds
+        self.means = np.array(means)
+        self.stds = np.array(stds)
+        return subfeatures
     
-    def plot_process(self, mean, std):
-        x = range(len(mean))
+    def plot_process(self):
+        '''可视化在不断去除掉最不重要特征的情况下，结果的变化过程。'''
+        x = range(len(self.means))
         ax = plt.subplot(1,1,1)
-        ax.plot(x,mean,color='red',lw=2)
-        ax.fill_between(x, mean+std, mean-std, alpha=0.3)
-        ax.scatter(mean.argmax(),mean.max(),color='black',s=50,
+        ax.plot(x, self.means, color='red', lw=2)
+        ax.fill_between(x, self.means+self.stds, self.means-self.stds, alpha=0.3)
+        ax.scatter(self.means.argmax(), self.means.max(),color='black',s=50,
                 edgecolors='purple')
-        ax.vlines(mean.argmax(),0,mean.max())
-        ax.text(mean.argmax(),mean.max()*1.01,'{:.2f}'.format(mean.max()))
-        ax.set_ylim(mean.min()*0.9,mean.max()*1.1)
+        ax.vlines(self.means.argmax(), 0, self.means.max())
+        ax.axhline(self.means.max(), linestyle='--',color='c')
+        ax.text(self.means.argmax(), self.means.max()*1.01, '{:.3f}'.format(self.means.max()))
+        ax.set_ylim(self.means.min()*0.9, self.means.max()*1.1)

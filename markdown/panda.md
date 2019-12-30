@@ -104,7 +104,7 @@ dfmi.__getitem__('one').__setitem__('second', value)
 
 it’s very hard to predict whether it will return a view or a copy (it depends on the memory layout of the array, about which pandas makes no guarantees), and therefore whether the `__setitem__` will modify `dfmi` or a temporary object that gets thrown out immediately afterward. 
 
-##### $\text{MultiIndex}$
+#### $\text{MultiIndex}$
 
 All of the `MultiIndex` constructors accept a `names` argument which stores string names for the levels themselves. If no names are provided, `None` will be assigned. The method `get_level_values()` will return a vector of the labels for each location at a particular level. The `MultiIndex` keeps all the defined `levels` of an index, even if they are not actually used. To reconstruct the `MultiIndex` with only the used levels, the `remove_unused_levels()` method may be used. Operations between differently-indexed objects having `MultiIndex` on the axes will work as you expect; data alignment will work the same as an Index of tuples. The `reindex()` method of `Series/DataFrames` can be called with another `MultiIndex`, or even a list or array of tuples. In general, `MultiIndex` keys take the form of tuples.
 
@@ -152,7 +152,7 @@ If we need intervals on a regular frequency, we can use the `interval_range()` f
 
 ###### Concatenating objects
 
-The `concat()` function does all of the heavy lifting of performing concatenation operations along an axis while performing optional set logic (union or intersection) of the indexes (if any) on the other axes. Note that I say “if any” because there is only a single possible axis of concatenation for Series.
+The `concat()` function does all of the heavy lifting of performing concatenation operations along an axis while performing optional set logic (union or intersection) of the indexes (if any) on the other axes. Note that “if any” because there is only a single possible axis of concatenation for Series.
 
 ```python
  result = pd.concat(frames, keys=['x', 'y', 'z'])
@@ -160,7 +160,7 @@ The `concat()` function does all of the heavy lifting of performing concatenatio
 
 ![](../picture/1/152.png)
 
-When gluing together multiple DataFrames, you have a choice of how to handle the other axes. This can be done in the following two ways: Take the union of them all, join='outer'. Take the intersection, join='inner'.
+When gluing together multiple `DataFrames`, you have a choice of how to handle the other axes. This can be done in the following two ways: Take the union of them all, `join='outer'`. Take the intersection, `join='inner'`.
 
 ```python
 result = pd.concat([df1, df4], axis=1).reindex(df1.index)
@@ -168,12 +168,24 @@ result = pd.concat([df1, df4], axis=1).reindex(df1.index)
 
 ![](../picture/1/153.png)
 
-A useful shortcut to `concat()` are the `append()` instance methods on Series and DataFrame. These methods actually predated `concat`. They concatenate along `axis=0`, namely the index. For `DataFrame` objects which don’t have a meaningful index, you may wish to append them and ignore the fact that they may have overlapping indexes. To do this, use the `ignore_index` argument. You can concatenate a mix of `Series` and `DataFrame` objects. The `Series` will be transformed to `DataFrame` with the column name as the name of the `Series`. If unnamed `Series` are passed they will be numbered consecutively. Passing `ignore_index=True` will drop all name references. A fairly common use of the `keys` argument is to override the column names when creating a new `DataFrame` based on existing `Series`. Notice how the default behaviour consists on letting the resulting `DataFrame` inherit the parent `Series`’ name, when these existed. Through the `keys` argument we can override the existing column names. You can also pass a dict to `concat` in which case the dict keys will be used for the `keys` argument (unless other keys are specified)
+A useful shortcut to `concat()` are the `append()` instance methods on Series and `DataFrame`.  They concatenate along `axis=0`. Ignoring index on the concatenation axis, use the `ignore_index` argument. You can concatenate a mix of `Series` and `DataFrame` objects. The `Series` will be transformed to `DataFrame` with the column name as the name of the `Series`. If unnamed `Series` are passed they will be numbered consecutively. A fairly common use of the `keys` argument is to override the column names when creating a new `DataFrame` based on existing `Series`. Notice how the default behavior consists on letting the resulting `DataFrame` inherit the parent `Series`’ name, when these existed. 
 
-pandas provides a single function, `merge()`, as the entry point for all standard database join operations between DataFrame or named Series objects. If left is a DataFrame or named Series and right is a subclass of DataFrame, the return type will still be DataFrame. `merge` is a function in the pandas namespace, and it is also available as a DataFrame instance method `merge()`, with the calling DataFrame being implicitly considered the left object in the join. The related `join()` method, uses merge internally for the index-on-index and column(s)-on-index join. If you are joining on index only, you may wish to use `DataFrame.join` to save yourself some typing.
- There are several cases to consider which are very important to understand: one-to-one joins, many-to-one joins, many-to-many joins.
-In SQL / standard relational algebra, if a key combination appears more than once in both tables, the resulting table will have the Cartesian product of the associated data.
-The `how` argument to merge specifies how to determine which keys are to be included in the resulting table. If a key combination does not appear in either the left or right tables, the values in the joined table will be NA.
+```python
+pieces = {'x': df1, 'y': df2, 'z': df3}
+```
+
+Through the `keys` argument we can override the existing column names. You can also pass a dict to `concat` in which case the dict keys will be used for the `keys` argument.
+
+pandas provides a single function, `merge()`, as the entry point for all standard database join operations between DataFrame or named Series objects. If left is a DataFrame or named Series and right is a subclass of DataFrame, the return type will still be DataFrame. The related `join()` method, uses merge internally for the index-on-index and column(s)-on-index join. If you are joining on index only, you may wish to use `DataFrame.join` to save yourself some typing.
+ There are several cases to consider which are very important to understand: one-to-one joins, many-to-one joins, many-to-many joins. In standard relational algebra, if a key combination appears more than once in both tables, the resulting table will have the Cartesian product of the associated data.
+The `how` argument to `merge` specifies how to determine which keys are to be included in the resulting table. If a key combination does not appear in either the left or right tables, the values in the joined table will be NA.
+
+| method | join Name        | Description                               |
+| ------ | ---------------- | ----------------------------------------- |
+| left   | left outer join  | use keys from left frame only             |
+| right  | right outer join | use keys from right frame only            |
+| outer  | full outer join  | use union of keys from both frames        |
+| inner  | inner join       | use intersection of keys from both frames |
 
 Users can use the `validate` argument to automatically check whether there are unexpected duplicates in their merge keys. Key uniqueness is checked before merge operations and so should protect against memory overflows. Checking key uniqueness is also a good way to ensure user data structures are as expected.
 
@@ -182,7 +194,9 @@ result = pd.merge(left, right, on='B', how='outer', validate="one_to_one")
 pd.merge(left, right, on='B', how='outer', validate="one_to_many")
 ```
 
-You can join a singly-indexed DataFrame with a level of a MultiIndexed DataFrame. The level will match on the name of the index of the singly-indexed frame against a level name of the MultiIndexed frame. Strings passed as the `on, left_on`, and `right_on` parameters may refer to either column names or index level names. This enables merging DataFrame instances on a combination of index levels and columns without resetting indexes. The merge `suffixes` argument takes a tuple of list of strings to append to overlapping column names in the input DataFrames to disambiguate the result columns.
+You can join a singly-indexed DataFrame with a level of a MultiIndexed DataFrame. The level will match on the name of the index of the singly-indexed frame against a level name of the MultiIndexed frame. Strings passed as the `on, left_on`, and `right_on` parameters may refer to either column names or index level names. This enables merging DataFrame instances on a combination of index levels and columns without resetting indexes.
+
+ The merge `suffixes` argument takes a tuple of list of strings to append to overlapping column names in the input DataFrames to disambiguate the result columns.
 
 #### Reshaping and pivot tables
 
@@ -204,7 +218,11 @@ If the indexes have names, you can use the level names instead of specifying the
 
 The top-level `melt()` function and the corresponding `DataFrame.melt()` are useful to massage a DataFrame into a format where one or more columns are identifier variables, while all other columns, considered measured variables, are “unpivoted” to the row axis, leaving just two non-identifier columns, “variable” and “value”. The names of those columns can be customized by supplying the `var_name` and `value_name` parameters.
 
-##### Computational tools
+###### Pivot tables
+
+The function `pivot_table()` can be used to create spreadsheet-style pivot tables. It takes a number of arguments: data: a DataFrame object. values: a column or a list of columns to aggregate. 对values进行聚合时，是对每一个value进行单独的聚合，等价于分组之后，单独取每个特征进行聚合，然后在组合起来。并不是对采用了index和columns分组之后，使用values的DataFrame来进行聚合计算。index: a column, Grouper, array which has the same length as data, or list of them. Keys to group by on the pivot table index. If an array is passed, it is being used as the same manner as column values. columns: a column, Grouper, array which has the same length as data, or list of them. Keys to group by on the pivot table column. If an array is passed, it is being used as the same manner as column values. aggfunc: function to use for aggregation.
+
+#### Computational tools
 
 ###### Statistical functions
 

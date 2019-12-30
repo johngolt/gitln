@@ -10,10 +10,6 @@ import numpy as np
 from sklearn.metrics import roc_auc_score
 from copy import copy
 
-'''Constructs a new estimator with the same parameters.
-Clone does a deep copy of the model in an estimator
-without actually copying attached data. It yields a new estimator
-with the same parameters that has not been fit on any data.'''
 
 class SelectHyparams:
     def __init__(self, estimator, params, imbalance=False):
