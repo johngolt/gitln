@@ -226,13 +226,25 @@ The function `pivot_table()` can be used to create spreadsheet-style pivot table
 
 ###### Statistical functions
 
-Series and `DataFrame` have a method `pct_change()` to compute the percent change over a given number of periods. `Series.cov()` can be used to compute covariance between series. Analogously, `DataFrame.cov()` to compute pairwise covariances among the series in the `DataFrame`, also excluding NA/null values. Correlation may be computed using the `corr()` method. Using the `method` parameter, several methods for computing correlations are provided. All of these are currently computed using pairwise complete observations. A related method `corrwith()` is implemented on `DataFrame` to compute the correlation between like-labeled Series contained in different `DataFrame` objects. The `rank()` method produces a data ranking with ties being assigned the mean of the ranks for the group. `rank()` is also a `DataFrame` method and can rank either the rows (axis=0) or the columns (axis=1). NaN values are excluded from the ranking. rank optionally takes a parameter `ascending` which by default is true; when false, data is reverse-ranked, with larger values assigned a smaller rank. rank supports different tie-breaking methods, specified with the `method` parameter: average, min, max, first: ranks assigned in the order they appear in the array.
+Series and `DataFrame` have a method `pct_change()` to compute the percent change over a given number of periods. `Series.cov()` can be used to compute covariance between series. Analogously, `DataFrame.cov()` to compute pairwise covariances among the series in the `DataFrame`, also excluding NA/null values. Correlation may be computed using the `corr()` method. Using the `method` parameter, several methods for computing correlations are provided. All of these are currently computed using pairwise complete observations. A related method `corrwith()` is implemented on `DataFrame` to compute the correlation between like-labeled Series contained in different `DataFrame` objects. The `rank()` method produces a data ranking with ties being assigned the mean of the ranks for the group. `rank()` is also a `DataFrame` method and can rank either the rows or the columns. NaN values are excluded from the ranking. rank optionally takes a parameter `ascending` which by default is true; when false, data is reverse-ranked, with larger values assigned a smaller rank. rank supports different tie-breaking methods, specified with the `method` parameter: average, min, max, first: ranks assigned in the order they appear in the array.
 
 ###### Window Functions
 
-For working with data, a number of window functions are provided for computing common window or rolling statistics. Among these are count, sum, mean, median, correlation, variance, covariance, standard deviation, skewness, and kurtosis. The `rolling()` and `expanding()` functions can be used directly from `DataFrameGroupBy` objects. We work with rolling, expanding and exponentially weighted data through the corresponding objects, Rolling, Expanding and `EWM`. Generally these methods all have the same interface. They all accept the following arguments: window: size of moving window; min_periods: threshold of non-null data points to require; center: boolean, whether to set the labels at the center
+For working with data, a number of window functions are provided for computing common window or rolling statistics. Among these are count, sum, mean, median, correlation, variance, covariance, standard deviation, skewness, and kurtosis. The `rolling()` and `expanding()` functions can be used directly from `DataFrameGroupBy` objects. We work with rolling, expanding and exponentially weighted data through the corresponding objects, Rolling, Expanding and `EWM`.  They all accept the following arguments: window: size of moving window; min_periods: threshold of non-null data points to require; center: boolean, whether to set the labels at the center. They can also be applied to `DataFrame` objects. This is really just syntactic sugar for applying the moving window operator to all of the `DataFrame’s` columns. The `apply()` function takes an extra `func` argument and performs generic rolling computations. The `func` argument should be a single function that produces a single value from an `ndarray` input. 
 
-We can then call methods on these rolling objects. These return like-indexed objects. They can also be applied to `DataFrame` objects. This is really just syntactic sugar for applying the moving window operator to all of the `DataFrame’s` columns.
+```python
+ser.rolling(window=5, win_type='gaussian').mean(std=0.1)
+#For some windowing functions, additional parameters must be specified
+```
+
+The inclusion of the interval endpoints in rolling window calculations can be specified with the `closed` parameter
+
+| closed  | Description          | Default for        |
+| ------- | -------------------- | ------------------ |
+| right   | close right endpoint | time-based windows |
+| left    | close left endpoint  |                    |
+| both    | close both endpoint  | fixed windows      |
+| neither | open endpoints       |                    |
 
 ##### Visualization
 
@@ -269,29 +281,40 @@ If there is structure in the data, it may be visible in the Andrews' curves of t
 ##### Group By
 
 By “group by” we are referring to a process involving one or more of the following steps: Splitting the data into groups based on some criteria; Applying a function to each group independently; Combining the results into a data structure.
-In the apply step, we might wish to do one of the following:
+In the apply step, we might wish to do one of the following: Aggregation: compute a summary statistic for each group; Transformation: perform some group-specific computations and return a like-indexed object; Filtration: discard some groups, according to a group-wise computation that evaluates True or False. Some combination of the above
 
-- Aggregation: compute a summary statistic for each group. 
-- Transformation: perform some group-specific computations and return a like-indexed object. 
-- Filtration: discard some groups, according to a group-wise computation that evaluates True or False. Some examples.
-
-###### Splitting
+###### Splitting an object into groups
 
 pandas objects can be split on any of their axes. The abstract definition of grouping is to provide a mapping of labels to group names.  The mapping can be specified many different ways:
 
 - A Python function, to be called on each of the axis labels.
 - A list or NumPy array of the same length as the selected axis.
 - A dict or Series, providing a label -> group name mapping.
-- For DataFrame objects, a string indicating a column to be used to group. Of course df.groupby('A') is just syntactic sugar for df.groupby(df['A']), but it makes life simpler.
+- For DataFrame objects, a string indicating a column to be used to group. 
 - For DataFrame objects, a string indicating an index level to be used to group.
-  A list of any of the above things.
+- A list of any of the above things.
 
-pandas Index objects support duplicate values. If a non-unique index is used as the group key in a groupby operation, all values for the same index value will be considered to be in one group and thus the output of aggregation functions will only contain unique index values
-Note that no splitting occurs until it’s needed. Creating the GroupBy object only verifies that you’ve passed a valid mapping. By default the group keys are sorted during the groupby operation. You may however pass `sort=False` for potential speedups. The `groups` attribute is a dict whose keys are the computed unique groups and corresponding values being the axis labels belonging to each group. With hierarchically-indexed data, it’s quite natural to group by one of the levels of the hierarchy. If the MultiIndex has names specified, these can be passed instead of the level number. A DataFrame may be grouped by a combination of columns and index levels by specifying the column names as strings and the index `levels` as `pd.Grouper` objects. Once you have created the GroupBy object from a DataFrame, you might want to do something different for each of the columns. Thus, using [] similar to getting a column from a DataFrame, you can do
+pandas Index objects support duplicate values. If a non-unique index is used as the group key in a groupby operation, all values for the same index value will be considered to be in one group and thus the output of aggregation functions will only contain unique index values.
+Note that no splitting occurs until it’s needed. Creating the `GroupBy` object only verifies that you’ve passed a valid mapping.
+
+By default the group keys are sorted during the groupby operation. You may however pass `sort=False` for potential speedups. The `groups` attribute is a dict whose keys are the computed unique groups and corresponding values being the axis labels belonging to each group. 
+
+With hierarchically-indexed data, it’s quite natural to group by one of the levels of the hierarchy. If the `MultiIndex` has names specified, these can be passed instead of the `level` number. Grouping with multiple levels is supported. A `DataFrame` may be grouped by a combination of columns and index levels by specifying the column names as strings and the index `levels` as `pd.Grouper` objects. 
+
+```python
+df.groupby([pd.Grouper(level=1), 'A']).sum()
+df.groupby(['A', 'B']).get_group(('bar', 'one'))
+```
+
+Once you have created the `GroupBy` object from a `DataFrame`, you might want to do something different for each of the columns. Thus, using [] similar to getting a column from a `DataFrame`, you can do. With the `GroupBy` object in hand, iterating through the grouped data is very natural and functions similarly to `itertools.groupby()`. A single group can be selected using `get_group()`
 
 ###### Aggregation
 
-Once the GroupBy object has been created, several methods are available to perform a computation on the grouped data. An obvious one is aggregation via the `aggregate()` or equivalently `agg()` method. Any function which reduces a Series to a scalar value is an aggregation function and will work, a trivial example is `df.groupby('A').agg(lambda ser: 1)`. With grouped Series you can also pass a list or dict of functions to do aggregation with, outputting a DataFrame. On a grouped DataFrame, you can pass a list of functions to apply to each column, which produces an aggregated result with a hierarchical index. To support column-specific aggregation with control over the output column names, pandas accepts the special syntax in GroupBy.agg(), known as “named aggregation”, where The keywords are the output column names, The values are tuples whose first element is the column to select and the second element is the aggregation to apply to that column. Pandas provides the pandas.NamedAgg namedtuple with the fields ['column', 'aggfunc'] to make it clearer what the arguments are. 
+Once the GroupBy object has been created, several methods are available to perform a computation on the grouped data. An obvious one is aggregation via the `aggregate()` or equivalently `agg()` method. Any function which reduces a Series to a scalar value is an aggregation function and will work, `df.groupby('A').agg(lambda ser: 1)`. 
+
+With grouped Series you can also pass a list or dict of functions to do aggregation with, outputting a DataFrame. On a grouped DataFrame, you can pass a list of functions to apply to each column, which produces an aggregated result with a hierarchical index. 
+
+To support column-specific aggregation with control over the output column names, pandas accepts the special syntax in GroupBy.agg(), known as “named aggregation”, where The keywords are the output column names, The values are tuples whose first element is the column to select and the second element is the aggregation to apply to that column. Pandas provides the `pandas.NamedAgg` namedtuple with the fields `['column', 'aggfunc']` to make it clearer what the arguments are. Plain tuples are allowed as well.
 
 ```python
  animals.groupby("kind").agg(min_height=pd.NamedAgg(column='height', aggfunc='min'),max_height=pd.NamedAgg(column='height', aggfunc='max'),
@@ -300,75 +323,155 @@ Once the GroupBy object has been created, several methods are available to perfo
 animals.groupby("kind").agg(min_height=('height', 'min'),max_height=('height', 'max'),average_weight=('weight', np.mean),
 ```
 
-Additional keyword arguments are not passed through to the aggregation functions. Only pairs of (column, aggfunc) should be passed as. If your aggregation functions requires additional arguments, partially apply them with `functools.partial()`
+Additional keyword arguments are not passed through to the aggregation functions. Only pairs of (column, aggfunc) should be passed as. If your aggregation functions requires additional arguments, partially apply them with `functools.partial()`. By passing a dict to `aggregate` you can apply a different aggregation to the columns of a DataFrame.
 
-The transform method returns an object that is indexed the same as the one being grouped. The transform function must: Return a result that is either the same size as the group chunk or broadcastable to the size of the group chunk. Operate column-by-column on the group chunk. The transform is applied to the first group chunk using chunk.apply. Not perform in-place operations on the group chunk. Group chunks should be treated as immutable, and changes to a group chunk may produce unexpected results. For example, when using fillna, inplace must be False. Transformation functions that have lower dimension outputs are broadcast to match the shape of the input array. Working with the resample, expanding or rolling operations on the groupby level used to require the application of helper functions. However, now it is possible to use `resample(), expanding()` and `rolling()` as methods on groupbys.
-The filter method returns a subset of the original object. The argument of filter must be a function that, applied to the group as a whole, returns True or False.
+###### Transformation
 
-Some operations on the grouped data might not fit into either the aggregate or transform categories. Or, you may simply want GroupBy to infer how to combine the results. For these, use the apply function, which can be substituted for both aggregate and transform in many standard use cases. However, apply can handle some exceptional use cases, apply on a Series can operate on a returned value from the applied function, that is itself a series, and possibly upcast the result to a DataFrame:
+The transform method returns an object that is indexed the same as the one being grouped. The transform function must: 
+
+- Return a result that is either the same size as the group chunk or broadcastable to the size of the group chunk. 
+- Operate column-by-column on the group chunk. The transform is applied to the first group chunk using `chunk.apply`. 
+- Not perform in-place operations on the group chunk. Group chunks should be treated as immutable, and changes to a group chunk may produce unexpected results. 
+- operates on the entire group chunk. If this is supported, a fast path is used starting from the *second* chunk.
+
+Transformation functions that have lower dimension outputs are broadcast to match the shape of the input array. it is possible to use `resample(), expanding()` and `rolling()` as methods on groupbys.
+
+```python
+df_re.groupby('A').rolling(4).B.mean()
+dff.groupby('B').filter(lambda x: len(x) > 2)
+```
+
+###### Filtration
+
+The `filter` method returns a subset of the original object. The argument of `filter` must be a function that, applied to the group as a whole, returns `True` or `False`. For `DataFrames` with multiple columns, filters should explicitly specify a column as the filter criterion.
+
+For these, use the apply function, which can be substituted for both aggregate and transform in many standard use cases. However, apply can handle some exceptional use cases, apply on a Series can operate on a returned value from the applied function, that is itself a series, and possibly upcast the result to a DataFrame:
 
 ##### Working with text data
 
-Series and Index are equipped with a set of string processing methods that make it easy to operate on each element of the array. Perhaps most importantly, these methods exclude missing/NA values automatically. These are accessed via the `str` attribute and generally have names matching the equivalent built-in string methods. If you do want literal replacement of a string, you can set the optional `regex` parameter to False, rather than escaping each character. In this case both pat and repl must be strings. The `replace` method can also take a callable as replacement. It is called on every `pat` using `re.sub()`. The callable should expect one positional argument and return a string. The `replace` method also accepts a compiled regular expression object from `re.compile()` as a pattern. All flags should be included in the compiled regular expression object.
-There are several ways to concatenate a Series or Index, either with itself or others, all based on `cat()`
-By default, missing values are ignored. Using `na_rep`, they can be given a representation. The first argument to `cat()` can be a list-like object, provided that it matches the length of the calling Series. Missing values on either side will result in missing values in the result as well, unless `na_rep` is specified.
-The parameter others can also be two-dimensional. In this case, the number or rows must match the lengths of the calling Series. For concatenation with a Series or DataFrame, it is possible to align the indexes before concatenation by setting the `join` keyword. The usual options are available for join (one of 'left', 'outer', 'inner', 'right'). In particular, alignment also means that the different lengths do not need to coincide anymore.
-The same alignment can be used when others is a DataFrame. Several array-like items can be combined in a list-like container. All elements without an index within the passed list-like must match in length to the calling Series, but Series and Index may have arbitrary length (as long as alignment is not disabled with join=None). If using join='right' on a list-like of others that contains different indexes, the union of these indexes will be used as the basis for the final concatenation. You can use [] notation to directly index by position locations. If you index past the end of the string, the result will be a NaN.
+Series and Index are equipped with a set of string processing methods that make it easy to operate on each element of the array. Perhaps most importantly, these methods exclude missing/NA values automatically. These are accessed via the `str` attribute and generally have names matching the equivalent built-in string methods.
 
-The extract method accepts a regular expression with at least one capture group. Extracting a regular expression with more than one group returns a DataFrame with one column per group.
-Elements that do not match return a row filled with NaN. Thus, a Series of messy strings can be “converted” into a like-indexed Series or DataFrame of cleaned-up or more useful strings, without necessitating `get()` to access tuples or `re.match` objects. The dtype of the result is always object, even if no match is found and the result only contains NaN. Note that any capture group names in the regular expression will be used for column names; otherwise capture group numbers will be used. Extracting a regular expression with one group returns a DataFrame with one column if `expand=True`.It returns a Series if `expand=False`. Calling on an Index with a regex with more than one capture group returns a DataFrame if `expand=True`. It raises ValueError if `expand=False`.
+If you do want literal replacement of a string, you can set the optional `regex` parameter to `False`, rather than escaping each character. In this case both `pat` and `repl` must be strings.
+
+ ```python
+dollars = pd.Series(['12', '-$10', '$10,000'])
+dollars = pd.Series(['12', '-$10', '$10,000'])
+dollars.str.replace('-$', '-', regex=False)
+ ```
+
+The `replace` method can also take a callable as replacement. It is called on every `pat` using `re.sub()`. The callable should expect one positional argument and return a string. 
+
+```python
+pat = r'[a-z]+'
+def repl(m):
+     return m.group(0)[::-1]
+pd.Series(['foo 123', 'bar baz', np.nan]).str.replace(pat, repl)
+pat = r"(?P<one>\w+) (?P<two>\w+) (?P<three>\w+)"
+def repl(m):
+     return m.group('two').swapcase()
+pd.Series(['Foo Bar Baz', np.nan]).str.replace(pat, repl)
+```
+
+The `replace` method also accepts a compiled regular expression object from `re.compile()` as a pattern. All flags should be included in the compiled regular expression object.
+
+```python
+regex_pat = re.compile(r'^.a|dog', flags=re.IGNORECASE)
+s3.str.replace(regex_pat, 'XX-XX ')
+```
+
+There are several ways to concatenate a Series or Index, either with itself or others, all based on `cat()`
+
+```python
+pd.Series(['a', 'b', 'c', 'd']).str.cat(sep=',')
+s.str.cat(['A', 'B', 'C', 'D'])
+v = pd.Series(['z', 'a', 'b', 'd', 'e'], index=[-1, 0, 1, 3, 4])
+s.str.cat(v, join='left', na_rep='-')
+```
+
+By default, missing values are ignored. Using `na_rep`, they can be given a representation. The first argument to `cat()` can be a list-like object, provided that it matches the length of the calling Series. Missing values on either side will result in missing values in the result as well, unless `na_rep` is specified.
+The parameter `others` can also be two-dimensional. In this case, the number or rows must match the lengths of the calling Series. For concatenation with a Series or DataFrame, it is possible to align the indexes before concatenation by setting the `join` keyword. The usual options are available for join (one of 'left', 'outer', 'inner', 'right'). In particular, alignment also means that the different lengths do not need to coincide anymore.
+The same alignment can be used when `others` is a DataFrame. Several array-like items can be combined in a list-like container. All elements without an index within the passed list-like must match in length to the calling Series, but Series and Index may have arbitrary length (as long as alignment is not disabled with join=None). If using join='right' on a list-like of `others` that contains different indexes, the union of these indexes will be used as the basis for the final concatenation. 
+
+You can use `[]` notation to directly index by position locations. If you index past the end of the string, the result will be a `NaN`.
+
+###### Extracting substrings
+
+The `extract` method accepts a regular expression with at least one capture group. Extracting a regular expression with more than one group returns a DataFrame with one column per group.
+
+```python
+pd.Series(['a1', 'b2', 'c3']).str.extract(r'([ab])(\d)', expand=False)
+```
+
+Elements that do not match return a row filled with NaN. Thus, a Series of messy strings can be “converted” into a like-indexed Series or DataFrame of cleaned-up or more useful strings, without necessitating `get()` to access tuples or `re.match` objects. The `dtype` of the result is always object, even if no match is found and the result only contains NaN. Note that any capture group names in the regular expression will be used for column names; otherwise capture group numbers will be used. 
+
+Extracting a regular expression with one group returns a DataFrame with one column if `expand=True`.It returns a Series if `expand=False`. Calling on an Index with a regex with more than one capture group returns a DataFrame if `expand=True`. It raises ValueError if `expand=False`.
 
 ```python
 pd.Series(['a1', 'b2', 'c3']).str.extract(r'(?P<letter>[ab])(?P<digit>\d)',expand=False)
 ```
 
-the `extractall` method returns every match. The result of extractall is always a DataFrame with a MultiIndex on its rows. The last level of the MultiIndex is named match and indicates the order in the subject. When each subject string in the Series has exactly one match,then `extractall(pat).xs(0, level='match')` gives the same result as `extract(pat)`. Index also supports `.str.extractall`. It returns a DataFrame which has the same result as a `Series.str.extractall` with a default index. The distinction between match and contains is strictness: match relies on strict `re.match`, while contains relies on `re.search`. Methods like match, contains, startswith, and endswith take an extra `na` argument so missing values can be considered True or False:
+the `extractall` method returns every match. The result of `extractall` is always a DataFrame with a `MultiIndex` on its rows. The last level of the `MultiIndex` is named match and indicates the order in the subject. When each subject string in the Series has exactly one match,then `extractall(pat).xs(0, level='match')` gives the same result as `extract(pat)`. Index also supports `.str.extractall`. It returns a DataFrame which has the same result as a `Series.str.extractall` with a default index. 
 
-| Method                 | Description                                                  |
-| ---------------------- | ------------------------------------------------------------ |
-| `wrap()`               | Split long strings into lines with length less than a given width |
-| `slice()`              | Slice each string in the Series                              |
-| `slice_replace()`      | Replace slice in each string with passed value               |
-| `findall()`            | Compute list of all occurrences of pattern/regex for each string |
-| `len()`                |                                                              |
-| `count()`              |                                                              |
-| `partition/rpartition` |                                                              |
+The distinction between `match` and `contains` is strictness: `match` relies on strict `re.match`, while `contains` relies on `re.search`. Methods like `match`, `contains, startswith`, and `endswith` take an extra `na` argument so missing values can be considered `True` or `False`.
+
+| Method            | Description                                                  |
+| ----------------- | ------------------------------------------------------------ |
+| `wrap()`          | Split long strings into lines with length less than a given width |
+| `slice()`         | Slice each string in the Series                              |
+| `slice_replace()` | Replace slice in each string with passed value               |
+| `findall()`       | Compute list of all occurrences of pattern/regex for each string |
+| `count()`         | Count occurrences of pattern                                 |
 
 ##### Working with missing data
 
-As data comes in many shapes and forms, pandas aims to be flexible with regard to handling missing data. While NaN is the default missing value marker for reasons of computational speed and convenience, we need to be able to easily detect this value with data of different types: floating point, integer, boolean, and general object. 
-To make detecting missing values easier, pandas provides the `isna()` and `notna()` functions, which are also methods on Series and DataFrame objects. One has to be mindful that in Python, the nan's don’t compare equal, but None's do. Note that pandas/NumPy uses the fact that np.nan != np.nan, and treats None like np.nan.
-For `datetime64[ns]` types, NaT represents missing values. This is a pseudo-native sentinel value that can be represented by NumPy in a singular `dtype (datetime64[ns])`. pandas objects provide compatibility between NaT and NaN.
-You can insert missing values by simply assigning to containers. The actual missing value used will be chosen based on the `dtype.numeric` containers will always use NaN regardless of the missing value type chosen; Likewise, datetime containers will always use NaT. For object containers, pandas will use the value given. Missing values propagate naturally through arithmetic operations between pandas objects.
-You can also fillna using a dict or Series that is alignable. The labels of the dict or index of the Series must match the columns of the frame you wish to fill. Both Series and DataFrame objects have `interpolate()` that, by default, performs linear interpolation at missing data points.
-The `method` argument gives access to fancier interpolation methods. If you have `scipy` installed, you can pass the name of a 1-d interpolation routine to method. The appropriate interpolation method will depend on the type of data you are working with. If you are dealing with a time series that is growing at an increasing rate, method='quadratic' may be appropriate. If you have values approximating a cumulative distribution function, then method='pchip' should work well. To fill missing values with goal of smooth plotting, consider method='akima'.
+ While `NaN` is the default missing value marker for reasons of computational speed and convenience, we need to be able to easily detect this value with data of different types. To make detecting missing values easier, pandas provides the `isna()` and `notna()` functions. One has to be mindful that in Python, the nan's don’t compare equal, but None's do. Note that pandas/NumPy uses the fact that `np.nan != np.nan`, and treats `None` like `np.nan`.
 
-Often times we want to replace arbitrary values with other values. `replace()` in Series and `replace()` in DataFrame provides an efficient yet flexible way to perform such replacements. For a Series, you can replace a single value or a list of values by another value:
+Because `NaN` is a float, a column of integers with even one missing values is cast to floating-point `dtype`. The actual missing value used will be chosen based on the `dtype.numeric` containers will always use `NaN` regardless of the missing value type chosen; Likewise, datetime containers will always use `NaT`. For object containers, pandas will use the value given. Missing values propagate naturally through arithmetic operations between pandas objects.
+
+###### filling missing values
+
+```python
+df2.fillna(0)#Replace NA with a scalar value
+df.fillna(method='pad')#Fill gaps forward or backward
+df.fillna(method='pad', limit=1) #limit the amount of filling
+dff.where(pd.notna(dff), dff.mean(), axis='columns')
+```
+
+You can also `fillna` using a dict or Series that is alignable. The labels of the dict or index of the Series must match the columns of the frame you wish to fill. 
+
+Both Series and DataFrame objects have `interpolate()` that, by default, performs linear interpolation at missing data points. The `method` argument gives access to fancier interpolation methods. If you have `scipy` installed, you can pass the name of a 1-d interpolation routine to method. The appropriate interpolation method will depend on the type of data you are working with. If you are dealing with a time series that is growing at an increasing rate, `method='quadratic'` may be appropriate. If you have values approximating a cumulative distribution function, then `method='pchip'` should work well. To fill missing values with goal of smooth plotting, consider `method='akima'`.
+
+###### Replacing generic values
+
+`replace()` in Series and `replace()` in DataFrame provides an efficient yet flexible way to perform such replacements. For a Series, you can replace a single value or a list of values by another value.
 
 ```python
 ser = pd.Series([0., 1., 2., 3., 4.])
 ser.replace(0, 5)
 ser.replace([0, 1, 2, 3, 4], [4, 3, 2, 1, 0])
 ser.replace({0: 10, 1: 100})
+#For a DataFrame, you can specify individual values by column
 df = pd.DataFrame({'a': [0, 1, 2, 3, 4], 'b': [5, 6, 7, 8, 9]})
 df.replace({'a': 0, 'b': 5}, 100)
 ```
 
 All of the regular expression examples can also be passed with the `to_replace` argument as the `regex` argument. In this case the value argument must be passed explicitly by name or regex must be a nested dictionary. 
 
-##### Nullable integer data type
-
-Because NaN is a float, a column of integers with even one missing values is cast to floating-point dtype. Pandas provides a nullable integer array, which can be used by explicitly requesting the dtype:
-
 ```python
-pd.Series([1, 2, np.nan, 4], dtype=pd.Int64Dtype())
-```
+d = {'a': list(range(4)), 'b': list('ab..'), 'c': ['a', 'b', np.nan, 'd']}
+df = pd.DataFrame(d)
+df.replace('.', np.nan) # str->str
+df.replace(r'\s*\.\s*', np.nan, regex=True) # regex->regex
+df.replace(['a', '.'], ['b', np.nan]) # list->list
+df.replace([r'\.', r'(a)'], ['dot', r'\1stuff'], regex=True) #list of regex -> list of regex
+df.replace({'b': '.'}, {'b': np.nan}) # dict->dict
+df.replace({'b': r'\s*\.\s*'}, {'b': np.nan}, regex=True)#dict of regex-> dict
 
-Pandas can represent integer data with possibly missing values using arrays.IntegerArray. This is an extension types implemented within pandas. It is not the default dtype for integers, and will not be inferred; you must explicitly pass the dtype into array() or Series:
+```
 
 ##### Categorical data
 
-Categoricals are a pandas data type corresponding to categorical variables in statistics. A categorical variable takes on a limited, and usually fixed, number of possible values. In contrast to statistical categorical variables, categorical data might have an order, but numerical operations are not possible. All values of categorical data are either in categories or np.nan. Order is defined by the order of categories, not lexical order of the values. Internally, the data structure consists of a categories array and an integer array of codes which point to the real value in the categories array.
+`Categoricals` are a pandas data type corresponding to categorical variables in statistics. A categorical variable takes on a limited, and usually fixed, number of possible values. In contrast to statistical categorical variables, categorical data might have an order, but numerical operations are not possible. All values of categorical data are either in categories or np.nan. Order is defined by the order of categories, not lexical order of the values. Internally, the data structure consists of a categories array and an integer array of codes which point to the real value in the categories array.
 
 The categorical data type is useful in the following cases:
 
@@ -378,7 +481,7 @@ The categorical data type is useful in the following cases:
 
 ###### Object creation
 
-By specifying `dtype="category"` when constructing a Series. By converting an existing Series or column to a category dtype. By using special functions, such as cut(), which groups data into discrete bins. By passing a `pandas.Categorical` object to a Series or assigning it to a DataFrame.
+By specifying `dtype="category"` when constructing a Series. By converting an existing Series or column to a category dtype. By using special functions, such as `cut()`, which groups data into discrete bins.
 
 ```python
 raw_cat = pd.Categorical(["a", "b", "c", "a"], categories=["b", "c", "d"],
@@ -389,24 +492,26 @@ cat_type = CategoricalDtype(categories=["b", "c", "d"],ordered=True)
 s_cat = s.astype(cat_type)
 ```
 
-we passed `dtype='category'`, we used the default behavior: Categories are inferred from the data; Categories are unordered. To control those behaviors, instead of passing 'category', use an instance of CategoricalDtype.
+we passed `dtype='category'`, we used the default behavior: Categories are inferred from the data; Categories are unordered. To control those behaviors, instead of passing 'category', use an instance of `CategoricalDtype`.
 
-A categorical’s type is fully described by: categories: a sequence of unique values and no missing values; ordered: a boolean. This information can be stored in a CategoricalDtype. The categories argument is optional, which implies that the actual categories should be inferred from whatever is present in the data when the pandas.Categorical is created.
+A categorical’s type有两部分：categories: a sequence of unique values and no missing values; ordered: a boolean. This information can be stored in a `CategoricalDtype`. The categories argument is optional, which implies that the actual categories should be inferred from whatever is present in the data when the `pandas.Categorical` is created. These properties are exposed as `s.cat.categories` and `s.cat.ordered`.
 
-Two instances of CategoricalDtype compare equal whenever they have the same categories and order. When comparing two unordered categoricals, the order of the categories is not considered. Categorical data has a `categories` and a `ordered` property, which list their possible values and whether the ordering matters or not. These properties are exposed as `s.cat.categories` and `s.cat.ordered`. If you don’t manually specify categories and ordering, they are inferred from the passed arguments.
-Renaming categories is done by assigning new values to the `Series.cat.categories` property or by using the `rename_categories()` method. Appending categories can be done by using the `add_categories()` method. Removing categories can be done by using the `remove_categories()` method. Values which are removed are replaced by np.nan. If you want to do remove and add new categories in one step, or simply set the categories to a predefined scale, use `set_categories()`. 
+Two instances of CategoricalDtype compare equal whenever they have the same categories and order. When comparing two unordered categoricals, the order of the categories is not considered. All instances of `CategoricalDtype` compare equal to the string `'category'`.
 
-If categorical data is ordered, then the order of the categories has a meaning and certain operations are possible. If the categorical is unordered, .min()/.max() will raise a TypeError.
+Renaming categories is done by assigning new values to the `Series.cat.categories` property or by using the `rename_categories()` method. Appending categories can be done by using the `add_categories()` method. Removing categories can be done by using the `remove_categories()` method. Values which are removed are replaced by `np.nan`. If you want to do remove and add new categories in one step, or simply set the categories to a predefined scale, use `set_categories()`. 
+
+If categorical data is ordered, then the order of the categories has a meaning and certain operations are possible. If the categorical is unordered, .min()/.max() will raise a `TypeError`.
 You can set categorical data to be ordered by using `as_ordered()` or unordered by using `as_unordered()`. These will by default return a new object. Reordering the categories is possible via the `Categorical.reorder_categories()` and the `Categorical.set_categories()` methods. For `Categorical.reorder_categories()`, all old categories must be included in the new categories and no new categories are allowed. This will necessarily make the sort order the same as the categories order.
 
 Comparing categorical data with other objects is possible in three cases:
 
-- Comparing equality (== and !=) to a list-like objectof the same length as the categorical data.
-- All comparisons (==, !=, >, >=, <, and <=) of categorical data to another categorical Series, when ordered==True and the categories are the same.
+- Comparing equality (== and !=) to a list-like object of the same length as the categorical data.
+- All comparisons (==, !=, >, >=, <, and <=) of categorical data to another categorical Series, when `ordered==True` and the categories are the same.
 - All comparisons of a categorical data to a scalar.
 
-All other comparisons, especially “non-equality” comparisons of two categoricals with different categories or a categorical with any list-like object, will raise a TypeError.
-You can concat two DataFrames containing categorical data together, but the categories of these categoricals need to be the same. If you want to combine categoricals that do not necessarily have the same categories, the `union_categoricals()` function will combine a list-like of categoricals. The new categories will be the union of the categories being combined. By default, Series or DataFrame concatenation which contains the same categories results in category dtype, otherwise results in object dtype. Use `.astype` or `union_categoricals` to get category result. Missing values should not be included in the Categorical’s categories, only in the values. Instead, it is understood that NaN is different, and is always a possibility. In the Categorical’s codes, missing values will always have a code of -1.
+You can `concat` two DataFrames containing categorical data together, but the categories of these categoricals need to be the same. If you want to combine categoricals that do not necessarily have the same categories, the `union_categoricals()` function will combine a list-like of categoricals. The new categories will be the union of the categories being combined. 
+
+By default, Series or DataFrame concatenation which contains the same categories results in category dtype, otherwise results in object dtype. Use `.astype` or `union_categoricals` to get category result. Missing values should not be included in the Categorical’s categories, only in the values. Instead, it is understood that NaN is different, and is always a possibility. In the Categorical’s codes, missing values will always have a code of -1.
 
 ##### Time series
 
@@ -418,7 +523,3 @@ pandas captures 4 general time related concepts: Date times: A specific date and
 | Time deltas  | `Timedelta`  | `TimedeltaIndex` | `timedelta64[ns]` | `to_timedelta, timedelta_range` |
 | Time spans   | `Period`     | `PeriodIndex`    | `period[freq]`    | `Period, period_range`          |
 | Date offsets | `DateOffset` | `None`           | `None`            | `DateOffset`                    |
-
-Timestamped data is the most basic type of time series data that associates values with points in time. For pandas objects it means using the points in time.
-However, in many cases it is more natural to associate things like change variables with a time span instead. The span represented by Period can be specified explicitly, or inferred from datetime string format.
-pandas allows you to capture both representations and convert between them. Under the hood, pandas represents timestamps using instances of Timestamp and sequences of timestamps using instances of DatetimeIndex. For regular time spans, pandas uses Period objects for scalar values and PeriodIndex for sequences of spans. 

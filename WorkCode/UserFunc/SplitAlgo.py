@@ -24,7 +24,8 @@ class Split:
             return data[[feature, target]]
 
     @abstractmethod
-    def _split(self, ser, bins, feature=None, target=None):  # 分箱函数，由子类实现。
+    def _split(self, ser, bins, feature=None, target=None):
+        '''分箱的实现函数，返回分箱的结果和分箱点。'''
         pass
 
     def split(self, data, feature=None, target=None, bins=None):
@@ -58,7 +59,7 @@ class Split:
             result.append(res)
         result = pd.concat(result, axis=1)
         return result
-
+        
 
 class FreqSplit(Split):
     def _split(self, ser, bins, feature=None, target=None):
@@ -73,6 +74,7 @@ class LengthSplit(Split):
 
 
 class TreeSplit(Split):
+    '''基于树的分箱方法，包括了基尼系数和信息熵。'''
     
     def __init__(self, thres=0.001, bins=10):
         self.thres = thres
@@ -80,6 +82,7 @@ class TreeSplit(Split):
 
     @abstractmethod
     def _entropy(self, group):
+        '''计算信息熵和基尼系数的函数。'''
         pass
 
     def cal(self, data, feature, target):
@@ -89,13 +92,15 @@ class TreeSplit(Split):
         return (temp1*enti.sum(axis=1)).sum()
 
     def increase(self, data, feature, target):
+        '''计算增益率。'''
         end = self.cal(data, feature, target)
         tmp = data[target].value_counts(normalize=True)
         begin = self._entropy(tmp).sum()
         return begin - end
 
     def bestpoint(self, data, feature, target):
-        '''寻找连续值的最优切分点。返回最优切分点和对应的信息增益。'''
+        '''寻找连续值的最优切分点。返回最优切分点和对应的信息增益，对特征的取值从小到大遍历，
+        分成二叉树。'''
         df = data.loc[:, [feature, target]].copy()
         values = data[feature].unique()
         if len(values) == 1:  # 如果为一个值，无法分箱，返回。
@@ -103,8 +108,9 @@ class TreeSplit(Split):
         values.sort()
         values = (values[:-1]+values[1:])/2
         dic = {}
+
         for value in values:
-            mask = data[feature] < value
+            mask = data[feature] < value # 修改了df的值，但并没有修改data中feature的值
             df.loc[mask, feature] = 0
             df.loc[~mask, feature] = 1
             dic[value] = self.increase(df, feature, target)
@@ -114,15 +120,19 @@ class TreeSplit(Split):
 
     def generalsplit(self, data, feature, target):
         '''切分过程中，每次增加一个分箱，从所有分箱中找到一个分箱的切点使得
-        信息增益最大的那个作为新的分箱点，并添加到values中。'''
+        信息增益最大的那个作为新的分箱点，并添加到values中，在得到n个分箱的情况下，通过对数组进行分箱，
+        然后从各个分箱中找到最优的切分点，然后选取信息增益最大的分箱的切分点作为下一个切分点。'''
         values = [-np.inf, np.inf]
         baseln = self.thres
+
         while (len(values) <= self.bins+1) and (baseln >= self.thres):
             values.sort()
-            df = data[[feature, target]].copy()
+
+            df = data[[feature, target]].copy() 
             grouper = pd.cut(df[feature], bins=values)
             func = partial(self.bestpoint, feature=feature, target=target)
             res = df.groupby(grouper).apply(func)
+
             index = res['increase'].idxmax()
             values.append(res.loc[index, 'value'])
             baseln = res.loc[index, 'increase']  # 当上一轮的最大信息增益大于设定值时才会继续分箱。
@@ -147,7 +157,7 @@ class GiniSplit(TreeSplit):
 
 class Merge(Split):
     def __init__(self, threshold=0.01, bins=10):
-        self.threshold = threshold
+        self.threshold = threshold  # 合并的最小阈值，当大于这个值是，不再进行合并。
         super().__init__(bins=bins)
 
     @abstractmethod
@@ -168,20 +178,21 @@ class Merge(Split):
         values.sort()
         values = (values[:-1] + values[1:])/2
         values = values.tolist()
-        baseln = self.threshold
+        values = [-np.inf] + values+[np.inf]
+        baseln = self.threshold  
         while (len(values) > self.bins+1) and (baseln <= self.threshold):
             df = data[[feature, target]].copy()
             grouper = pd.cut(data[feature], bins=values)
-            group = df.groupby(grouper).groups
-            keys = list(group.keys())[1:]
-            dvalues = list(group.values())[:-1]
+            group = df.groupby(grouper).groups #返回字典
+            keys = list(group.keys())[1:]  # 分组的keys
+            dvalues = list(group.values())[:-1] # 每个分箱的index
             remove = 0
             for value, key, dvalue in zip(values[1:], keys, dvalues):
                 res = self.diff(df, dvalue, group[key], feature, target)
-                if res <= baseln:
+                if res <= baseln: # 寻找相邻分箱中差异最小的两个。
                     baseln = res
                     remove = value
-            value.remove(remove)
+            values.remove(remove)
         return values
 
     def _split(self, ser, bins, feature=None, target=None):
