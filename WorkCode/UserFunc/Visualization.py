@@ -74,6 +74,84 @@ class Visual:
         ax = self.catelabels(mapping1, ax, xaxis=False)
         ax.set_title('Counts Jitter Plot', fontsize=22)
 
-    
+
+from pyecharts import options as opts
+from pyecharts.charts import Geo, Map
+from pyecharts.globals import GeoType, SymbolType
+from pyecharts import render
+from pyecharts.globals import ThemeType 
+
+
+
+class GeoVisual:
+    def __init__(self):
+        self.type_ = {'scatter':GeoType.SCATTER, 'heatmap':GeoType.HEATMAP,
+        'line':GeoType.LINES, 'effectscatter':GeoType.EFFECT_SCATTER}
+
+    def process(self, series):
+        dic = series.to_dict()
+        return list(dic.items)
+
+    def show_china(self, series, type_='scatter', title=None):
+        data = self.process(series)
+        g = (Geo().add_schema(maptype='china', is_roam=False)
+                  .add(series_name=series.name, data_pair=data, type_=self.type_[type_])
+                  .set_series_opts(label_opts=opts.LabelOpts(is_show=False))
+                  .set_global_opts(visualmap_opts=opts.VisualMapOpts(),
+                                   title_opts=opts.TitleOpts(title=title),))
+        return g 
+
+    def show_province(self, name, series, type_='scatter', title=None):
+        data=self.process(series)
+        g = (Geo().add_schema(maptype=name, is_roam=False)
+                  .add(series_name=series.name, data_pair=data, type_=self.type_[type_])
+                  .set_series_opts(label_opts=opts.LabelOpts(is_show=False))
+                  .set_global_opts(visualmap_opts=opts.VisualMapOpts(),
+                             title_opts=opts.TitleOpts(title=title),))
+        return g
+
+class MapVisual:
+
+    def process(self, series):
+        dic = series.to_dict()
+        return list(dic.items)
+
+    def map_heatmap(self, series):
+        data = self.process(series)
+        c = (Map()
+            .add(series_name=series.name, data_pair=data, maptype="china")
+            .set_series_opts(label_opts=opts.LabelOpts(is_show=False))
+            .set_global_opts(title_opts=opts.TitleOpts(title="Map-不显示Label"),
+            visualmap_opts=opts.VisualMapOpts(),)
+        )
+        return c
+    def map_scatter(self, series):
+        data = self.process(series)
+        c = (Map()
+            .add(series_name=series.name, data_pair=data, maptype="china")
+            .set_series_opts(label_opts=opts.LabelOpts(is_show=False))
+            .set_global_opts(title_opts=opts.TitleOpts(title="Map-不显示Label"),)
+        )
+        return c
+
+
+from pyecharts.components import Table
+from pyecharts.options import ComponentTitleOpts
+
+class TableVisual:
+    def process(self, df):
+        headers = df.columns
+        rows = df.to_numpy().tolist()
+        return headers, rows
+    def table(self, df, title=None):
+        tb = Table()
+        headers, rows = self.process(df)
+        tb.add(headers, rows).set_global_opts(
+        title_opts=ComponentTitleOpts(title=title))
+        return tb
+
+    def gridshow(self, graphs):
+        pass
+
 
     
