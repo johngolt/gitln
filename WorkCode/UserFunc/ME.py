@@ -6,6 +6,8 @@ from sklearn.model_selection import train_test_split, KFold, StratifiedKFold
 from sklearn import metrics
 from pyecharts.components import Table
 from pyecharts.options import ComponentTitleOpts
+import xgboost as xgb
+import lightgbm as lgb 
 
 class ResultShow:
 
@@ -20,6 +22,26 @@ class ResultShow:
         tb.add(headers, rows).set_global_opts(
         title_opts=ComponentTitleOpts(title=title))
         return tb
+    
+    def line(self, train, valid, title):
+        index = int(np.argmax(valid)) 
+        x = list(range(len(train)))
+        c = (Line(init_opts=opts.InitOpts(theme=ThemeType.LIGHT))
+            .add_xaxis(x).add_yaxis("Train",ldic['train']['auc'],symbol='none',)
+            .add_yaxis("Valid",ldic['valid']['auc'],symbol='none',
+                    markline_opts=opts.MarkLineOpts(
+                    data=[opts.MarkLineItem(name='auc',x=index)],
+                    label_opts=opts.LabelOpts(is_show=False)))
+            .set_global_opts(title_opts=opts.TitleOpts(title=title),
+                            xaxis_opts=opts.AxisOpts(type_="value")))
+        return c
+
+    def tabshow(self, res):
+        trains, valids=res['train'], res['valid']
+        tab = Tab(page_title='模型选择')
+        for key in trains.keys():
+            tab.add(self.line(trains[key], valids[key], key), key)
+        return tab
 
     def get_group(self, y, ypred):
         category, bins = pd.qcut(ypred, q=10, duplicates='drop', retbins=True)
@@ -76,20 +98,11 @@ class ResultShow:
         conf = metrics.confusion_matrix(y, y1)
         value = conf[1,1]/conf.sum(axis=1)[1], conf[0,0]/conf.sum(axis=1)[0], metrics.f1_score(y, y1)
         df2.loc[:,'正确百分比'] = value
-        return df1, df2
-
-    def showinfo(self, y, ypred, bin_num=1):
-        pass
+        return df1, df
 
 
-class MagicE:
-    def __init__(self):
-        self.est = self.init_est()
-
-    @abstractmethod
-    def init_est(self):
-        pass
-
+class PreprocessME:
+    '''特征处理'''
     @abstractmethod
     def trainpreprocess(self, df_cat, df_num, **kwargs):
         pass
@@ -106,9 +119,10 @@ class MagicE:
         '''选取类别特征，默认所有的object类型的特征为类别，也可以自定义一些特征
         作为类别特征。'''
         result = X.select_dtypes(include='object')
+        cat = result.columns
         if columns is not None:
-            columns = result.columns|set(columns)
-        return columns
+            cat = cat|set(columns)
+        return cat
 
     def delete_columns(self, X, columns=None):
         '''删除不满足条件的特征，这些特征将不用于后续的处理和建模。'''
@@ -140,43 +154,182 @@ class MagicE:
             else:
                 raise ValueError('模型没有训练，不能用于测试！')
         return Xtrain
-            
-    def fit(self, X, y, drop_col=None, cat_col=None):
-        Xtrain = self.get_train(X, y, drop_col, cat_col)
-        self.est = self.est.fit(Xtrain, y)
-        return self
 
-    def predict_proba(self, X):
-        Xtest = self.get_train(X)
-        result = self.est.predict_proba(Xtest)
+class LGBPreprocess(PreprocessME):
+    def fillcat(self, X):
+        df_cat = X.copy()
+        if df_cat.isnull().any().any():
+            df_cat = df_cat.fillna('None')
+        return df_cat
+
+    def labelenc(self, df_cat):
+        df_cat = self.fillcat(df_cat)
+        result = df_cat.copy()
+        encs = {}
+        for feature in df_cat.columns:
+            enc = LabelEncoder()
+            enc.fit(df_cat[feature])
+            encs[feature] = enc
+            result[feature] = enc.transform(df_cat[feature])
+        return encs, result
+
+    def trainpreprocess(self, df_cat, df_num):
+        self.encs, result = self.labelenc(df_cat)
+        result = pd.concat([result, df_num], axis=1)
         return result
 
-    def nocvtrain(self, X, y, drop_col=None, cat_col=None, imbalace=False):
-        rainX, validX, trainy, validy = train_test_split(X, y, train_size=0.8)
-        Xtrain = self.get_train(trainX, trainy, drop_col, cat_col)
-        Xvalid = self.get_train(validX)
-        self.est.fit(Xtrain, trainy)
-
-    def train(self, X, y, drop_col=None, cat_col=None, cv=None, imbalance=False):
-        if cv is None:
-            trainX, validX, trainy, validy = train_test_split(X, y, train_size=0.8)
-            Xtrain = self.get_train(trainX, trainy, drop_col, cat_col)
-            Xvalid = self.get_train(validX)
-            self.est.fit(Xtrain, trainy)
-            
+    def testpreprocess(self, df_cat, df_num):
+        df_cat = self.fillcat(df_cat)
+        cat = df_cat.copy()
+        assert hasattr(self, 'encs')
+        for feature in self.encs.keys():
+            cat[feature] = self.encs[feature].transform(df_cat[feature])
+        result = pd.concat([cat, df_num], axis=1)
+        return result
 
 
-class XGBME(MagicE):
-    def init_est(self):
+
+class ModelME:
+    def __init__(self):
+        self.est = self.init_est()
+        self.name = self.est.__class__.__name__
+
+    @abstractmethod
+    def init_est(self, imbalance=False):
         pass
 
-class DartME(MagicE):
-    def init_est(self):
+    def set_params(self, **kwargs):
+        self.est.set_params(**kwargs)
+    
+    def get_label(self, data):
+        label = data.get_label()
+        return pd.Series(label)
+        
+    def _ks(self, y, preds):
+        fpr, tpr, _ = roc_curve(y, preds)
+        return np.abs(fpr-tpr).max()
+    
+    def _lift(self, y, preds):
+        groupor = pd.qcut(preds, q=10, duplicates='drop')
+        result = y.groupby(groupor).mean()/label.mean()
+        return 'lift',result.max()
+
+    @abstractmethod
+    def lift(self, data, preds):
         pass
 
-class GossME(MagicE):
-    def init_est(self):
+    @abstractmethod
+    def ks(self, data, preds):
         pass
+
+    def get_params(self):
+        if self.name == 'XGBClassifier':
+            params = self.est.get_xgb_params()
+            params.pop('n_estimators')
+            params['eval_metric']='auc'
+        elif self.name == 'LGBMClassifier':
+            params = self.est.get_params()
+            params.pop('n_estimators')
+            params['metric'] = 'auc'
+        return params
+
+    def dataformat(self, X, y):
+        if self.name == 'XGBClassifier':
+            data = xgb.DMatrix(X, y)
+        elif self.name == 'LGBMClassifier':
+            data = lgb.Dataset(X, y)
+        return data
+
+    def get_train_valid(self, X, y, imbalance=False):
+        if imbalance:
+            Xt, Xv, yt, yv = train_test_split(X, y, train_size=0.8, random_state=10)
+        else:
+            Xt, Xv, yt, yv = train_test_split(X, y, train_size=0.8, random_state=10, stratify=y)
+        tdata = self.dataformat(Xt, yt)
+        vdata = self.dataformat(Xv, yv)
+        return tdata, vdata
+    
+    def fit(self, X, y, imbalance=False):
+        est = clone(self, est)
+        res, _ self.train(X, y, imbalance)
+        self.estimators = {}
+        for key in res['valid'].keys():
+            n = np.argmax(res['valid'][key])
+            est = est.set_params(**{'n_estimators':n})
+            est = est.fit(X, y)
+            self.estimators[key] = est
+        return self
+    
+    def predict(self, X, best='auc'):
+        if best in self.estimators:
+            preds = self.estimators[key].predict_proba(X)
+        else:
+            raise KeyError('{}'.format(best))
+    
+    def train(self, X, y, imbalance=False):
+        tdata, vdata = self.get_train_valid(X, y, imbalance)
+        params = self.get_params( )
+        res, res1 = { }, { }
+        if self.name == 'XGBClassifier':
+            result = xgb.train(params, tdata, evals=[(tdata, 'train'), (vdata, 'valid')],
+                          num_boost_round=200, feval=self.ks, evals_result=res, 
+                   verbose_eval=False)
+            result = xgb.train(params, tdata, evals=[(tdata, 'train'), (vdata, 'valid')],
+                    num_boost_round=200, feval=self.lift, evals_result=res1, 
+                            verbose_eval=False)
+        elif self.name == 'LGBMClassifier':
+            result = lgb.train(params,ltdata,num_boost_round=200,
+                    valid_sets=[ltdata,lvdata],valid_names=['train','valid'],
+                            feval=self.ks, verbose_eval=False,evals_result=res)
+            result = lgb.train(params,ltdata,num_boost_round=200,
+                    valid_sets=[ltdata,lvdata],valid_names=['train','valid'],
+                            feval=self.lift, verbose_eval=False,evals_result=res1)
+        res['train'].update(res1['train'])
+        res['valid'].update(res1['valid'])
+        return res, result  
+
+class XGBME(ModelME):
+    def init_est(self):
+        params = { 'base_score': 0.5, 'booster': 'gbtree', 'colsample_bylevel': 1,
+               'colsample_bynode': 1, 'colsample_bytree': 0.5, 'gamma': 0,
+               'learning_rate': 0.1, 'max_delta_step': 0, 'max_depth': 5,
+                'min_child_weight': 1, 'n_estimators': 200, 'reg_alpha': 0,
+                'reg_lambda': 0, 'scale_pos_weight': 1,'subsample': 0.5 }
+        est = xgb.XGBClassifier()
+        self.est = est.set_params(**params)
+
+    def ks(self, data, preds):
+        y = self.get_label(data)
+        res = self._ks(y, preds)
+        return 'KS', res
+    
+    def lift(self, data, preds):
+        y = self.get_label(data)
+        res = self._lift(y, preds)
+        return 'lift', res
+
+class LGBME(ModelME):
+    def init_est(self):
+        params = { 'boosting_type': 'gbdt','class_weight': None,'colsample_bytree': 0.5,
+                    'importance_type': 'split', 'learning_rate': 0.1, 'max_depth': 5,
+                    'min_child_samples': 20, 'min_child_weight': 0.001, 'min_split_gain': 0.0,
+                    'n_estimators': 200, 'n_jobs': -1, 'num_leaves': 10, 'reg_alpha': 0.0,
+                    'reg_lambda': 0.0, 'subsample': 0.5, 'subsample_for_bin': 200000,
+                    'subsample_freq': 5}
+        est = lgb.LGBMClassifier()
+        self.est = est.set_params(**params)
+
+    def ks(self, data, preds):
+        y = self.get_label(data)
+        res = self._ks(y, preds)
+        return ('KS', res, True)
+
+    def lift(self, data, preds):
+        y = self.get_label(data)
+        res = self._lift(y, preds)
+        return ('Lift', res, True)
+    
+
 
 class LogitME(MagicE):
     def init_est(self):
@@ -192,27 +345,25 @@ class LogitME(MagicE):
             X = X.fillna(X.mode().iloc[0])
         return X
 
-    def fillcat(self, X):
-        df_cat = X.copy()
-        if df_cat.isnull().any().any():
-            df_cat = df_cat.fillna('None')
-        return df_cat
-
     def onehot(self, df_cat):
         df_cat = self.fillcat(df_cat)
         enc = OneHotEncoder(categories='auto',handle_unknown='ignore')
         enc.fit(df_cat)
         return enc
 
-    def labelenc(self, df_cat):
-        df_cat = self.fillcat(df_cat)
-        encs = {}
-        for feature in df_cat.columns:
-            enc = LabelEncoder()
-            enc.fit(df_cat[feature])
-            encs[feature] = enc
-        return encs
-
 class CartME(MagicE):
     def init_est(self):
+        pass
+
+
+class ME:
+    @abstractmethod
+    def init_preprocess(**kwargs):
+        pass
+    @abstractmethod
+    def init_model(**kwargs):
+        pass
+    def train(**kwargs):
+        pass
+    def predict(**kwargs):
         pass
