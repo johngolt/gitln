@@ -276,9 +276,15 @@ class PercentTruc(OutlierPro):
 
 
 class Encode:
-    '''对类别特征进行编码，具体的编码方式由子类来实现。'''
+    '''对类别特征进行编码，具体的编码方式由子类来实现。对于缺失值需要进行填充之后进行编码，
+    本身不能处理缺失值。'''
     def __init__(self):
         self.mapping_ = {}  # 保存编码的映射。
+
+    def fillcat(self, ser):   # 使用None填补类别特征的缺失值。
+        df_cat = ser.copy()
+        df_cat = df_cat.fillna('None')
+        return df_cat
 
     @abstractmethod
     def _encode(self, data, feature, y=None, **kwargs):
@@ -331,7 +337,7 @@ class OneHot(Encode):  # OneHotEncode
         columns = enc.get_feature_names()
         func = partial(re.sub, 'x0', feature)
         columns = list(map(func, columns))
-        result.columns = columns
+        result = pd.DataFrame(result, columns=columns, index=data.index)
         return result
 
 class CountEncode(Encode):  # Count-Encode
