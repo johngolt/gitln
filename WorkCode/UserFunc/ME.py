@@ -11,118 +11,8 @@ import lightgbm as lgb
 from sklearn import clone
 
 
-class ResultShow:
-
-    def process(self, df):
-        headers = df.columns
-        rows = df.to_numpy().tolist()
-        return headers, rows
-        
-    def table(self, df, title=None):
-        tb = Table()
-        headers, rows = self.process(df)
-        tb.add(headers, rows).set_global_opts(
-        title_opts=ComponentTitleOpts(title=title))
-        return tb
-    
-    def line(self, train, valid, title):
-        index = int(np.argmax(valid)) 
-        x = list(range(len(train)))
-        c = (Line(init_opts=opts.InitOpts(theme=ThemeType.LIGHT))
-            .add_xaxis(x).add_yaxis("Train",ldic['train']['auc'],symbol='none',)
-            .add_yaxis("Valid", ldic['valid']['auc'], symbol='none',
-                    markline_opts=opts.MarkLineOpts(
-                    data=[opts.MarkLineItem(name='auc', x=index)],
-                    label_opts=opts.LabelOpts(is_show=False)))
-            .set_global_opts(title_opts=opts.TitleOpts(title=title),
-                            xaxis_opts=opts.AxisOpts(type_="value")))
-        return c
-
-    def tabshow(self, res):
-        trains, valids = res['train'], res['valid']
-        tab = Tab(page_title='模型选择')
-        for key in trains.keys():
-            tab.add(self.line(trains[key], valids[key], key), key)
-        return tab
-
-    def get_group(self, y, ypred):
-        category, bins = pd.qcut(ypred, q=10, duplicates='drop', retbins=True)
-        cate = category.set_categories(bins[:-1], rename=True)
-        return cate, bins[:-1][::-1]
-
-    def bin_info(self, y, ypred):
-        columns = ['箱', '分数', '样本数量', '关注样本数', '区间关注类别比例',
-        '累计关注类别比例', '区间准确率', '累计准确率', '尾部准确率',
-        '提升', '累计提升']
-        cate, bins = self.get_group(y, ypred)
-        df = pd.DataFrame(columns=columns, index=bins)
-        group = y.groupby(cate)
-        df['箱'] = range(1, len(df)+1)
-        df['分数'] = tb.index
-        df['样本数量'] = group.size()
-        df['关注样本数'] = group.sum()
-        df['区间关注类别比例'] = df['关注样本数']/y.sum()
-        df['累计关注类别比例'] = df['区间关注类别比例'].cumsum()
-        df['区间准确率'] = 
-        df['提升'] = 
-        df['累计提升'] = 
-
-    def confusin(self, y, ypred, bin_num=1):
-        columns = ['实际类别', '类别总数', '正确百分比', '预测类别 非关注', '预测类别 关注']
-        indexs = ['非关注', '关注', '合计']
-        df = pd.DataFrame(columns=columns)
-        df['实际类别'] = indexs
-        df = df.set_index('实际类别')
-        df['类别总数'] = [len(y)-y.sum(), y.sum(), len(y)]
-
-        _, bins = self.get_group(y, ypred)
-        y1 = (ypred > bins[bin_num-1]).astype(int)
-
-        df.iloc[:2, -2:] = metrics.confusion_matrix(y, y1)
-        df.loc['关注', '正确百分比'] = df.at['关注', '预测类别 关注']/df.at['关注', '类别总数']
-        df.loc['非关注', '正确百分比'] = df.at['非关注', '预测类别 非关注']/df.at['非关注', '类别总数']
-        df.loc['合计', '预测类别 关注'] = df.at['关注', '预测类别 关注']/df.loc[:, '预测类别 关注'].sum()
-        df.loc['合计', '预测类别 非关注'] = df.at['非关注', '预测类别 非关注']/df.loc[:, '预测类别 非关注'].sum()
-        return df
-
-    def indicate(self, y, ypred, bin_num=1):
-        _, bins = self.get_group(y, ypred)
-        y1 = (ypred > bins[bin_num-1]).astype(int)
-        columns = ['名称', '正确百分比']
-        indexs = ['准确率', '精确率', '召回率']
-        indexs2 = ['灵敏度', '特异度', 'F1统计']
-        df1 = pd.DataFrame(columns=columns)
-        df1['名称'] = indexs
-        df2 = pd.DataFrame(columns=columns)
-        df2['名称'] = indexs2
-        value = metrics.accuracy_score(y, y1), metrics.precision_score(y, y1), metrics.recall_score(y, y1)
-        df1.loc[:, '正确百分比'] = value
-        conf = metrics.confusion_matrix(y, y1)
-        value = conf[1, 1]/conf.sum(axis=1)[1], conf[0, 0]/conf.sum(axis=1)[0], metrics.f1_score(y, y1)
-        df2.loc[:, '正确百分比'] = value
-        return df1, df
-
-
 class PreprocessME:
     '''特征处理,对类别特征进行编码，使得可以进行后续建模'''
-    def fillcat(self, X):   # 使用None填补类别特征的缺失值。
-        df_cat = X.copy()
-        for feature in df_cat.columns:
-            if df_cat[feature].dtype == 'object':
-                df_cat[feature] = df_cat[feature].fillna('None')
-            else:
-                df_cat[feature] = df_cat[feature].fillna(np.ceil(df_cat[feature].max())+1)
-        return df_cat
-
-    def fillnum(self, X, method='mean'):  # 填补数值特征的缺失值。
-        X = X.copy()
-        if method == 'mean':
-            X = X.fillna(X.mean())
-        elif method == 'median':
-            X = X.fillna(X.median())
-        elif method == 'mode':
-            X = X.fillna(X.mode().iloc[0])
-        return X
 
     @abstractmethod
     def trainpreprocess(self, df_cat, df_num, **kwargs):
@@ -176,7 +66,29 @@ class PreprocessME:
             raise ValueError('模型没有训练，不能用于测试！')
 
 
-class LGBPreprocess(PreprocessME):
+class ProcessMethod:
+    '''用于特征处理的类，包括数值特征缺失值填补，类别特征缺失值填补，自然数编码，one-hot编码，也可以整合
+    之前写的一些数据处理的方法。'''
+
+    def fillcat(self, X):
+        '''因为sklearn无法处理缺失值，所以对缺失值进行简单的填补，可以用于后续的编码。'''
+        df_cat = X.copy()
+        for feature in df_cat.columns:
+            if df_cat[feature].dtype == 'object':
+                df_cat[feature] = df_cat[feature].fillna('None')
+            else:
+                df_cat[feature] = df_cat[feature].fillna(-999)
+        return df_cat
+
+    def fillnum(self, X, method='mean'):  # 填补数值特征的缺失值。
+        X = X.copy()
+        if method == 'mean':
+            X = X.fillna(X.mean())
+        elif method == 'median':
+            X = X.fillna(X.median())
+        elif method == 'mode':
+            X = X.fillna(X.mode().iloc[0])
+        return X
 
     def labelenc(self, df_cat):
         '''自然数编码。'''
@@ -189,23 +101,7 @@ class LGBPreprocess(PreprocessME):
             encs[feature] = enc
             result[feature] = enc.transform(df_cat[feature])
         return encs, result
-
-    def trainpreprocess(self, df_cat, df_num):
-        self.encs, result = self.labelenc(df_cat)
-        result = pd.concat([result, df_num], axis=1)
-        return result
-
-    def testpreprocess(self, df_cat, df_num):
-        df_cat = self.fillcat(df_cat)
-        cat = df_cat.copy()
-        assert hasattr(self, 'encs')
-        for feature in self.encs.keys():
-            cat[feature] = self.encs[feature].transform(df_cat[feature])
-        result = pd.concat([cat, df_num], axis=1)
-        return result
-
-
-class LGBOnehot(PreprocessME):
+    
     def onehotenc(self, df_cat):
         df_cat = self.fillcat(df_cat)
         encs = {}
@@ -229,6 +125,28 @@ class LGBOnehot(PreprocessME):
         result = pd.concat(result, axis=1)
         return result
 
+    
+class LGBPreprocess(PreprocessME, ProcessMethod):
+    '''对类别特征进行自然数编码，缺失值另作一类。'''
+
+    def trainpreprocess(self, df_cat, df_num):
+        self.encs, result = self.labelenc(df_cat)
+        result = pd.concat([result, df_num], axis=1)
+        return result
+
+    def testpreprocess(self, df_cat, df_num):
+        df_cat = self.fillcat(df_cat)
+        cat = df_cat.copy()
+        assert hasattr(self, 'encs')
+        for feature in self.encs.keys():
+            cat[feature] = self.encs[feature].transform(df_cat[feature])
+        result = pd.concat([cat, df_num], axis=1)
+        return result
+
+
+class LGBOnehot(PreprocessME, ProcessMethod):
+    '''对类别特征进行one-hot编码，类别特征另作一类。'''
+
     def trainpreprocess(self, df_cat, df_num):
         self.encs = self.onehotenc(df_cat)
         result = self.onehottrans(df_cat, self.encs)
@@ -236,11 +154,110 @@ class LGBOnehot(PreprocessME):
         return result
 
     def testpreprocess(self, df_cat, df_num):
-        df_cat = self.fillcat(df_cat)
         assert hasattr(self, 'encs')
         result = self.onehottrans(df_cat, self.encs)
         result = pd.concat([result, df_num], axis=1)
         return result
+
+
+class ResultShow:
+
+    def process(self, df):
+        headers = df.columns
+        rows = df.to_numpy().tolist()
+        return headers, rows
+        
+    def table(self, df, title=None):
+        tb = Table()
+        headers, rows = self.process(df)
+        tb.add(headers, rows).set_global_opts(
+        title_opts=ComponentTitleOpts(title=title))
+        return tb
+    
+    def line(self, train, valid, title):
+        index = int(np.argmax(valid)) 
+        x = list(range(len(train)))
+        c = (Line(init_opts=opts.InitOpts(theme=ThemeType.LIGHT))
+            .add_xaxis(x).add_yaxis("Train",ldic['train']['auc'],symbol='none',)
+            .add_yaxis("Valid", ldic['valid']['auc'], symbol='none',
+                    markline_opts=opts.MarkLineOpts(
+                    data=[opts.MarkLineItem(name='auc', x=index)],
+                    label_opts=opts.LabelOpts(is_show=False)))
+            .set_global_opts(title_opts=opts.TitleOpts(title=title),
+                            xaxis_opts=opts.AxisOpts(type_="value")))
+        return c
+
+    def tabshow(self, res):
+        trains, valids = res['train'], res['valid']
+        tab = Tab(page_title='模型选择')
+        for key in trains.keys():
+            tab.add(self.line(trains[key], valids[key], key), key)
+        return tab
+
+    def get_group(self, y, ypred):
+        category, bins = pd.qcut(ypred, q=10, duplicates='drop', retbins=True)
+        cate = category.set_categories(bins[:-1], rename=True)
+        return cate, bins[:-1][::-1]
+
+    def bin_info(self, y, ypred):
+        columns = ['箱', '分数', '样本数量', '关注样本数', '区间关注类别比例',
+        '累计关注类别比例', '区间准确率', '累计准确率', '提升', '累计提升']
+        cate, bins = self.get_group(y, ypred)
+        df = pd.DataFrame(columns=columns, index=bins)
+        group = y.groupby(cate)
+        df['箱'] = range(1, len(df)+1)
+        df['分数'] = tb.index
+        df['样本数量'] = group.size()
+        df['关注样本数'] = group.sum()
+        df['区间关注类别比例'] = df['关注样本数']/y.sum()
+        df['累计关注类别比例'] = df['区间关注类别比例'].cumsum()
+        df['区间准确率'] = df['关注样本数']/df['样本数量']
+        df['累计准确率'] = (df['关注样本数'].cumsum())/df['样本数量'].cumsum()
+        df['提升'] = df['区间准确率']/y.mean()
+        df['累计提升'] = df['累计准确率']/y.mean()
+        return df
+
+    def confusin(self, y, ypred, bin_num=1):
+        columns = ['实际类别', '类别总数', '正确百分比', '预测类别 非关注', '预测类别 关注']
+        indexs = ['非关注', '关注', '合计']
+        df = pd.DataFrame(columns=columns)
+        df['实际类别'] = indexs
+        df = df.set_index('实际类别')
+        df['类别总数'] = [len(y)-y.sum(), y.sum(), len(y)]
+
+        _, bins = self.get_group(y, ypred)
+        y1 = (ypred > bins[bin_num-1]).astype(int)
+
+        df.iloc[:2, -2:] = metrics.confusion_matrix(y, y1)
+        df.loc['关注', '正确百分比'] = df.at['关注', '预测类别 关注']/df.at['关注', '类别总数']
+        df.loc['非关注', '正确百分比'] = df.at['非关注', '预测类别 非关注']/df.at['非关注', '类别总数']
+        df.loc['合计', '预测类别 关注'] = df.at['关注', '预测类别 关注']/df.loc[:, '预测类别 关注'].sum()
+        df.loc['合计', '预测类别 非关注'] = df.at['非关注', '预测类别 非关注']/df.loc[:, '预测类别 非关注'].sum()
+        return df
+
+    def indicate(self, y, ypred, bin_num=1):
+        _, bins = self.get_group(y, ypred)
+        y1 = (ypred > bins[bin_num-1]).astype(int)
+        columns = ['名称', '正确百分比']
+        indexs = ['准确率', '精确率', '召回率']
+        indexs2 = ['灵敏度', '特异度', 'F1统计']
+        df1 = pd.DataFrame(columns=columns)
+        df1['名称'] = indexs
+        df2 = pd.DataFrame(columns=columns)
+        df2['名称'] = indexs2
+        value = metrics.accuracy_score(y, y1), metrics.precision_score(y, y1), metrics.recall_score(y, y1)
+        df1.loc[:, '正确百分比'] = value
+        conf = metrics.confusion_matrix(y, y1)
+        value = conf[1, 1]/conf.sum(axis=1)[1], conf[0, 0]/conf.sum(axis=1)[0], metrics.f1_score(y, y1)
+        df2.loc[:, '正确百分比'] = value
+        return df1, df
+
+
+class HyperOpt:
+    def __init__(self):
+
+    @abstractmethod
+    def init_hyparams()
 
 
 class ModelME:
@@ -258,27 +275,33 @@ class ModelME:
         self.est.set_params(**kwargs)
     
     def get_label(self, data):
+        '''计算评价函数的辅助函数，从xgboost和lightgbm的数据结构中得到y值'''
         label = data.get_label()
         return pd.Series(label)
         
     def _ks(self, y, preds):
+        '''计算KS值'''
         fpr, tpr, _ = roc_curve(y, preds)
         return np.abs(fpr-tpr).max()
     
     def _lift(self, y, preds):
+        '''计算提升度。'''
         groupor = pd.qcut(preds, q=10, duplicates='drop')
         result = y.groupby(groupor).mean()/y.mean()
         return result.max()
 
     @abstractmethod
     def lift(self, data, preds):
+        '''用于xgboost和lightgbm的train方法中实现提升度的函数，子类实现。'''
         pass
 
     @abstractmethod
     def ks(self, data, preds):
+        '''用于xgboost和lightgbm的train方法中实现KS值的函数，子类实现。'''
         pass
 
-    def get_params(self):  # 得到模型参数
+    def get_params(self):
+        '''用于得到xgboost和lightgbm的train方法的params参数。'''
         if self.name == 'XGBClassifier':
             params = self.est.get_xgb_params()
             params.pop('n_estimators')
@@ -289,7 +312,8 @@ class ModelME:
             params['metric'] = 'auc'
         return params
 
-    def dataformat(self, X, y):   # 转化数据格式，使得可以用于训练
+    def dataformat(self, X, y):
+        '''将训练数据转化为xgboost和lightgbm使用的数据格式，主要用于train方法。'''
         if self.name == 'XGBClassifier':
             data = xgb.DMatrix(X, y)
         elif self.name == 'LGBMClassifier':
@@ -297,7 +321,7 @@ class ModelME:
         return data
 
     def get_train_valid(self, X, y, imbalance=False):
-        '''将训练集进行划分，分为训练集和验证集，在验证集上进行参数的选择。'''
+        '''将训练集进行划分，分为训练集和验证集，在验证集上进行超参数的选择。'''
         if imbalance:
             Xt, Xv, yt, yv = train_test_split(X, y, train_size=0.8, random_state=10)
         else:
