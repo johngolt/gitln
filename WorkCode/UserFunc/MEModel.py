@@ -13,7 +13,7 @@ from sklearn import clone
 
 class ModelME:
     def __init__(self):
-        self.est = self.init_est() 
+        self.est = self.init_est()
         self.name = self.est.__class__.__name__
 
     @abstractmethod
@@ -24,6 +24,30 @@ class ModelME:
     def set_params(self, **kwargs):
         '''设置模型的参数。'''
         self.est.set_params(**kwargs)
+
+    def get_label(self, data):
+        '''计算评价函数的辅助函数，从xgboost和lightgbm的数据结构中得到y值'''
+        label = data.get_label()
+        return pd.Series(label)
+
+    def _ks(self, y, preds):
+        '''计算KS值'''
+        fpr, tpr, _ = metrics.roc_curve(y, preds)
+        return np.abs(fpr - tpr).max()
+
+    def _lift(self, y, preds):
+        '''计算提升度。'''
+        groupor = pd.qcut(preds, q=10, duplicates='drop')
+        result = y.groupby(groupor).mean() / y.mean()
+        return result.max()
+
+    @abstractmethod
+    def lift(self, preds, data):
+        pass
+
+    @abstractmethod
+    def ks(self, preds, data):
+        pass
 
     def get_params(self):
         '''用于得到xgboost和lightgbm的train方法的params参数。'''
@@ -43,7 +67,7 @@ class ModelME:
         if self.name == 'XGBClassifier':
             data = xgb.DMatrix(X, y)
         elif self.name == 'LGBMClassifier':
-            data = lgb.Dataset(X, y, free_raw_data=False)
+            data = lgb.Dataset(X, y)
         return data
 
     def train_valid_split(self, X, y, imbalance=False):
@@ -53,34 +77,36 @@ class ModelME:
         else:
             Xt, Xv, yt, yv = train_test_split(X, y, train_size=0.8, random_state=10, stratify=y)
         return Xt, Xv, yt, yv
-    
+
     def get_train_valid(self, X, y, imbalance=False):
         Xt, Xv, yt, yv = self.train_valid_split(X, y, imbalance)
         tdata = self.dataformat(Xt, yt)
         vdata = self.dataformat(Xv, yv)
         return tdata, vdata
-    
+
     def fit(self, X, y, imbalance=False):  # 模型训练
-        res, _ = self.train(X, y, imbalance)
+        if not hasattr(self, 'train_result'):
+            self.train(X, y, imbalance)
         self.estimators = {}
-        for key in res['valid'].keys():
-            n = np.argmax(res['valid'][key])
+        for key in self.train_result['valid'].keys():
+            n = np.argmax(self.train_result['valid'][key])
             est = clone(self.est)
             est = est.set_params(**{'n_estimators':n})
             est = est.fit(X, y)
             self.estimators[key] = est
         return self
-    
+
     def logit(self, res):
-        if res.ndim==2:
+        if res.ndim == 2:
             return res, 1/(1+np.exp(-res.sum(axis=1)))
         else:
             return res, None
-    
+
     def predict(self, X, best='auc', pred_contrib=False):  # 模型预测
         if best in self.estimators:
             if self.name == 'LGBMClassifier':
-                res = self.estimators[best].predict_proba(X, pred_contrib=pred_contrib)
+                res = self.estimators[best].predict_proba(X,
+                                                          pred_contrib=pred_contrib)
                 result = self.logit(res)
             elif self.name == 'XGBClassifier':
                 data = xgb.DMatrix(X)
@@ -89,34 +115,69 @@ class ModelME:
             return result
         else:
             raise KeyError('{}'.format(best))
-    
-    @abstractmethod
+
     def train(self, X, y, imbalance=False):
         '''用于对模型效果的展示，展示模型在训练集和测试集上的效果。主要针对于提升树模型,返回训练集和验证集上
         评价指标的值和在训练集的模型。'''
-        pass 
+        tdata, vdata = self.get_train_valid(X, y, imbalance)
+        params = self.get_params()
+        res, res1 = {}, {}
+        if self.name == 'XGBClassifier':
+            est = xgb.train(params,
+                            tdata,
+                            evals=[(tdata, 'train'), (vdata, 'valid')],
+                            num_boost_round=200,
+                            feval=self.ks,
+                            evals_result=res,
+                            verbose_eval=False)
+            est = xgb.train(params,
+                            tdata,
+                            evals=[(tdata, 'train'), (vdata, 'valid')],
+                            num_boost_round=200,
+                            feval=self.lift,
+                            evals_result=res1,
+                            verbose_eval=False)
+        elif self.name == 'LGBMClassifier':
+            est = lgb.train(params,
+                            tdata,
+                            num_boost_round=200,
+                            valid_sets=[tdata, vdata],
+                            valid_names=['train', 'valid'],
+                            feval=self.ks,
+                            verbose_eval=False,
+                            evals_result=res)
+            est = lgb.train(params,
+                            tdata,
+                            num_boost_round=200,
+                            valid_sets=[tdata, vdata],
+                            valid_names=['train', 'valid'],
+                            feval=self.lift,
+                            verbose_eval=False,
+                            evals_result=res1)
+        res['train'].update(res1['train'])
+        res['valid'].update(res1['valid'])
+        self.train_result = res
+        self.train_est = est
+
+    def trainreport(self, X, y, imbalance=False):
+        self.train(X, y, imbalance)
+        valid = pd.DataFrame(self.train_result['valid'])
+        limit = valid.idxmax().to_dict()
+        Xt, Xv, yt, yv = self.train_valid_split(X, y, imbalance)
+        tdata, vdata = self.get_train_valid(X, y, imbalance)
+        report = {}
+        for key in limit.keys():
+            if self.name == 'XGBClassifier':
+                typred = 1 - self.train_est.predict(tdata, ntree_limit=limit[key])
+                vypred = 1 - self.train_est.predict(vdata, ntree_limit=limit[key])
+            elif self.name == 'LGBMClassifier':
+                typred = 1 - self.train_est.predict(Xt, ntree_limit=limit[key])
+                vypred = 1 - self.train_est.predict(Xv, ntree_limit=limit[key])
+            report[key] = [typred, yt, vypred, yv]
+        return self.train_result, report
 
 
-class Evaluation:
-    def get_label(self, data):
-        '''计算评价函数的辅助函数，从xgboost和lightgbm的数据结构中得到y值'''
-        label = data.get_label()
-        return pd.Series(label)
-        
-    def _ks(self, y, preds):
-        '''计算KS值'''
-        fpr, tpr, _ = roc_curve(y, preds)
-        return np.abs(fpr-tpr).max()
-    
-    def _lift(self, y, preds):
-        '''计算提升度。'''
-        groupor = pd.qcut(preds, q=10, duplicates='drop')
-        result = y.groupby(groupor).mean()/y.mean()
-        return result.max()
-
-
-
-class XGBME(ModelME, Evaluation):  # xgboost
+class XGBME(ModelME):  # xgboost
     def init_est(self):
         params = {'base_score': 0.5, 'booster': 'gbtree', 'colsample_bylevel':1,
                'colsample_bynode': 1, 'colsample_bytree': 0.5, 'gamma': 0,
@@ -130,28 +191,14 @@ class XGBME(ModelME, Evaluation):  # xgboost
         y = self.get_label(data)
         res = self._ks(y, preds)
         return 'KS', res
-    
+
     def lift(self, preds, data):
         y = self.get_label(data)
         res = self._lift(y, preds)
         return 'Lift', res
-    
-    def train(self, X, y, imbalance=False):
-        tdata, vdata = self.get_train_valid(X, y, imbalance)
-        params = self.get_params()
-        res, res1 = {}, {}
-        est = xgb.train(params, tdata, evals=[(tdata, 'train'), (vdata, 'valid')],
-                                num_boost_round=200, feval=self.ks, evals_result=res, 
-                                verbose_eval=False)
-        est = xgb.train(params, tdata, evals=[(tdata, 'train'), (vdata, 'valid')],
-                               num_boost_round=200, feval=self.lift, evals_result=res1, 
-                               verbose_eval=False)
-        res['train'].update(res1['train'])
-        res['valid'].update(res1['valid'])
-        return res, est
 
 
-class LGBME(ModelME, Evaluation):  # lightgbm
+class LGBME(ModelME):  # lightgbm
     def init_est(self):
         params = {'boosting_type': 'gbdt', 'class_weight': None, 'colsample_bytree': 0.5,
                     'importance_type': 'split', 'learning_rate': 0.1, 'max_depth': 5,
@@ -171,38 +218,6 @@ class LGBME(ModelME, Evaluation):  # lightgbm
         y = self.get_label(data)
         res = self._lift(y, preds)
         return ('Lift', res, True)
-    
-    def train(self, X, y, imbalance=False):
-        tdata, vdata = self.get_train_valid(X, y, imbalance)
-        params = self.get_params()
-        res, res1 = {}, {}
-        est = lgb.train(params, tdata, num_boost_round=200,
-                               valid_sets=[tdata, vdata], valid_names=['train', 'valid'],
-                               feval=self.ks, verbose_eval=False, evals_result=res)
-        est = lgb.train(params, tdata, num_boost_round=200,
-                               valid_sets=[tdata, vdata], valid_names=['train', 'valid'],
-                               feval=self.lift, verbose_eval=False, evals_result=res1)
-        res['train'].update(res1['train'])
-        res['valid'].update(res1['valid'])
-        return res, est
-    
-    def trainreport(self, res, est,  tdata, vdata, bins=1):
-        visualresult = ValidResult()
-        indicator = visualresult.get_best_indicator(res)
-        valid = pd.DataFrame(res['valid'])
-        limit = valid.idxmax().to_dict()
-        report = {}
-        for key in limit.keys():
-            if self.name == 'XGBClassifier':
-                typred = 1 - est.predict(tdata, ntree_limit=limit[key])
-                vypred = 1 - est.predict(vdata, ntree_limit=limit[key])
-            elif self.name == 'LGBMClassifier':
-                typred = 1 - est.predict(tdata.get_data(), ntree_limit=limit[key])
-                vypred = 1 - est.predict(vdata.get_data(), ntree_limit=limit[key])
-            df_bin = visualresult.bin_info(self.get_label(vdata), vypred)
-            df_confusin = visualresult.confusin(self.get_label(vdata), vypred, bin_num=bins)
-            df_indicator = visualresult.indicate(self.get_label(vdata), vypred, bin_num=bins)
-            report[key] = [df_bin, df_confusin, df_indicator]
 
 
 class ValidResult:
@@ -213,10 +228,10 @@ class ValidResult:
         result = {}
         for key in res['valid'].keys():
             idx = valid[key].idxmax()
-            temp1 = train.loc[idx,:]
-            temp2 = valid.loc[idx,:]
+            temp1 = train.loc[idx, :]
+            temp2 = valid.loc[idx, :]
             res = pd.concat([temp1, temp2], axis=1)
-            res.columns=['训练集','测试集']
+            res.columns = ['训练集', '测试集']
             result[key] = res
         return result
 
@@ -232,7 +247,7 @@ class ValidResult:
         df = pd.DataFrame(columns=columns, index=bins)
         group = y.groupby(cate)
         df['箱'] = range(1, len(df)+1)
-        df['分数'] = tb.index
+        df['分数'] = df.index 
         df['样本数量'] = group.size()
         df['关注样本数'] = group.sum()
         df['区间关注类别比例'] = df['关注样本数']/y.sum()
@@ -276,7 +291,7 @@ class ValidResult:
         conf = metrics.confusion_matrix(y, y1)
         value = conf[1, 1]/conf.sum(axis=1)[1], conf[0, 0]/conf.sum(axis=1)[0], metrics.f1_score(y, y1)
         df2.loc[:, '正确百分比'] = value
-        return df1, df
+        return df1, df2
 
 
 class ResultShow:
@@ -285,16 +300,16 @@ class ResultShow:
         headers = df.columns
         rows = df.to_numpy().tolist()
         return headers, rows
-        
+
     def table(self, df, title=None):
         tb = Table()
         headers, rows = self.process(df)
         tb.add(headers, rows).set_global_opts(
         title_opts=ComponentTitleOpts(title=title))
         return tb
-    
+
     def line(self, train, valid, title):
-        index = int(np.argmax(valid)) 
+        index = int(np.argmax(valid))
         x = list(range(len(train)))
         c = (Line(init_opts=opts.InitOpts(theme=ThemeType.LIGHT))
             .add_xaxis(x).add_yaxis("Train",ldic['train']['auc'],symbol='none',)

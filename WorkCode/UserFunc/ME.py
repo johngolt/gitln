@@ -342,7 +342,7 @@ class ModelME:
         return self
     
     def logit(self, res):
-        if res.ndim==2:
+        if res.ndim == 2:
             return res, 1/(1+np.exp(-res.sum(axis=1)))
         else:
             return res, None
