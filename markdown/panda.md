@@ -1,5 +1,11 @@
 #### Indexing and selecting data
 
+a ``Series`` object acts in many ways like a one-dimensional NumPy array, and in many ways like a standard Python dictionary. Like a dictionary, the ``Series`` object provides a mapping from a collection of keys to a collection of values. We can also use dictionary-like Python expressions and methods to examine the keys/indices and values. ``Series`` objects can even be modified with a dictionary-like syntax. Just as you can extend a dictionary by assigning to a new key, you can extend a ``Series`` by assigning to a new index value. A ``Series`` builds on this dictionary-like interface and provides array-style item selection via the same basic mechanisms as NumPy arrays – that is, *slices*, *masking*, and *fancy indexing*.
+
+Recall that a ``DataFrame`` acts in many ways like a two-dimensional or structured array, and in other ways like a dictionary of ``Series`` structures sharing the same index. The first analogy we will consider is the ``DataFrame`` as a dictionary of related ``Series`` objects. The individual ``Series`` that make up the columns of the ``DataFrame`` can be accessed via dictionary-style indexing of the column name. Like with the ``Series`` objects discussed earlier, this dictionary-style syntax can also be used to modify the object, in this case adding a new column. Because Pandas is designed to work with NumPy, any NumPy ufunc will work on Pandas ``Series`` and ``DataFrame`` objects.
+
+
+
 Object selection has had a number of user-requested additions in order to support more explicit location based indexing. Pandas now supports three types of multi-axis indexing.
 
 - `.loc` is primarily label based, but may also be used with a boolean array. `.loc` will raise `KeyError` when the items are not found. Allowed inputs are: A single label; A list or array of labels; A slice object with labels 'a':'f', Note that contrary to usual python slices, both the start and the stop are included, when present in the index; A boolean array; A callable function with one argument and that returns valid output for indexing.
@@ -106,6 +112,50 @@ it’s very hard to predict whether it will return a view or a copy (it depends 
 
 #### $\text{MultiIndex}$
 
+For more flexibility in how the index is constructed, you can instead use the class method constructors available in the ``pd.MultiIndex``.
+
+pd.MultiIndex.from_arrays([['a', 'a', 'b', 'b'], [1, 2, 1, 2]])
+
+You can construct it from a list of tuples giving the multiple index values of each point:
+
+pd.MultiIndex.from_tuples([('a', 1), ('a', 2), ('b', 1), ('b', 2)])
+
+You can even construct it from a Cartesian product of single indices:
+
+pd.MultiIndex.from_product([['a', 'b'], [1, 2]])
+
+Similarly, you can construct the ``MultiIndex`` directly using its internal encoding by passing ``levels`` (a list of lists containing available index values for each level) and ``labels`` (a list of lists that reference these labels):
+
+pd.MultiIndex(levels=[['a', 'b'], [1, 2]],
+              labels=[[0, 0, 1, 1], [0, 1, 0, 1]])
+
+Any of these objects can be passed as the ``index`` argument when creating a ``Series`` or ``Dataframe``, or be passed to the ``reindex`` method of an existing ``Series`` or ``DataFrame``.
+
+
+
+Sometimes it is convenient to name the levels of the ``MultiIndex``.
+This can be accomplished by passing the ``names`` argument to any of the above ``MultiIndex`` constructors, or by setting the ``names`` attribute of the index after the fact:
+
+Remember that columns are primary in a ``DataFrame``, and the syntax used for multiply indexed ``Series`` applies to the columns.
+
+Working with slices within these index tuples is not especially convenient; trying to create a slice within a tuple will lead to a syntax error:
+`health_data.loc[(:, 1), (:, 'HR')]`
+
+You could get around this by building the desired slice explicitly using Python's built-in ``slice()`` function, but a better way in this context is to use an ``IndexSlice`` object, which Pandas provides for precisely this situation.
+
+
+
+Earlier, we briefly mentioned a caveat, but we should emphasize it more here.
+*Many of the ``MultiIndex`` slicing operations will fail if the index is not sorted.*
+Let's take a look at this here.
+
+We'll start by creating some simple multiply indexed data where the indices are *not lexographically sorted*:
+
+Although it is not entirely clear from the error message, this is the result of the MultiIndex not being sorted.
+For various reasons, partial slices and other similar operations require the levels in the ``MultiIndex`` to be in sorted (i.e., lexographical) order.
+Pandas provides a number of convenience routines to perform this type of sorting; examples are the ``sort_index()`` and ``sortlevel()`` methods of the ``DataFrame``.
+We'll use the simplest, ``sort_index()``, here:
+
 All of the `MultiIndex` constructors accept a `names` argument which stores string names for the levels themselves. If no names are provided, `None` will be assigned. The method `get_level_values()` will return a vector of the labels for each location at a particular level. The `MultiIndex` keeps all the defined `levels` of an index, even if they are not actually used. To reconstruct the `MultiIndex` with only the used levels, the `remove_unused_levels()` method may be used. Operations between differently-indexed objects having `MultiIndex` on the axes will work as you expect; data alignment will work the same as an Index of tuples. The `reindex()` method of `Series/DataFrames` can be called with another `MultiIndex`, or even a list or array of tuples. In general, `MultiIndex` keys take the form of tuples.
 
 ```python
@@ -150,7 +200,47 @@ If we need intervals on a regular frequency, we can use the `interval_range()` f
 
 #### Merge, join and concatenate
 
+For binary operations on two ``Series`` or ``DataFrame`` objects, Pandas will align indices in the process of performing the operation.
+
+A similar type of alignment takes place for *both* columns and indices when performing operations on ``DataFrame``s:
+
+When performing operations between a ``DataFrame`` and a ``Series``, the index and column alignment is similarly maintained.
+Operations between a ``DataFrame`` and a ``Series`` are similar to operations between a two-dimensional and one-dimensional NumPy array.
+
 ###### Concatenating objects
+
+Pandas has a function, ``pd.concat()``, which has a similar syntax to ``np.concatenate`` but contains a number of options that we'll discuss momentarily:
+
+```python
+# Signature in Pandas v0.18
+pd.concat(objs, axis=0, join='outer', join_axes=None, ignore_index=False,
+          keys=None, levels=None, names=None, verify_integrity=False,
+          copy=True)
+```
+
+``pd.concat()`` can be used for a simple concatenation of ``Series`` or ``DataFrame`` objects, just as ``np.concatenate()`` can be used for simple concatenations of arrays:
+
+If you'd like to simply verify that the indices in the result of ``pd.concat()`` do not overlap, you can specify the ``verify_integrity`` flag.
+With this set to True, the concatenation will raise an exception if there are duplicate indices.
+
+Sometimes the index itself does not matter, and you would prefer it to simply be ignored.
+This option can be specified using the ``ignore_index`` flag.
+With this set to true, the concatenation will create a new integer index for the resulting ``Series``:
+
+Another option is to use the ``keys`` option to specify a label for the data sources; the result will be a hierarchically indexed series containing the data:
+
+By default, the entries for which no data is available are filled with NA values.
+To change this, we can specify one of several options for the ``join`` and ``join_axes`` parameters of the concatenate function.
+By default, the join is a union of the input columns (``join='outer'``), but we can change this to an intersection of the columns using ``join='inner'``:
+
+Another option is to directly specify the index of the remaininig colums using the ``join_axes`` argument, which takes a list of index objects.
+Here we'll specify that the returned columns should be the same as those of the first input:
+
+Because direct array concatenation is so common, ``Series`` and ``DataFrame`` objects have an ``append`` method that can accomplish the same thing in fewer keystrokes.
+For example, rather than calling ``pd.concat([df1, df2])``, you can simply call ``df1.append(df2)``:
+
+Keep in mind that unlike the ``append()`` and ``extend()`` methods of Python lists, the ``append()`` method in Pandas does not modify the original object–instead it creates a new object with the combined data.
+It also is not a very efficient method, because it involves creation of a new index *and* data buffer.
 
 The `concat()` function does all of the heavy lifting of performing concatenation operations along an axis while performing optional set logic (union or intersection) of the indexes (if any) on the other axes. Note that “if any” because there is only a single possible axis of concatenation for Series.
 
@@ -175,6 +265,38 @@ pieces = {'x': df1, 'y': df2, 'z': df3}
 ```
 
 Through the `keys` argument we can override the existing column names. You can also pass a dict to `concat` in which case the dict keys will be used for the `keys` argument.
+
+
+
+Perhaps the simplest type of merge expresion is the one-to-one join, which is in many ways very similar to the column-wise concatenation.
+As a concrete example, consider the following two ``DataFrames`` which contain information on several employees in a company:
+
+The ``pd.merge()`` function recognizes that each ``DataFrame`` has an "employee" column, and automatically joins using this column as a key.
+The result of the merge is a new ``DataFrame`` that combines the information from the two inputs.
+Notice that the order of entries in each column is not necessarily maintained: in this case, the order of the "employee" column differs between ``df1`` and ``df2``, and the ``pd.merge()`` function correctly accounts for this.
+Additionally, keep in mind that the merge in general discards the index, except in the special case of merges by index.
+
+Many-to-one joins are joins in which one of the two key columns contains duplicate entries.
+For the many-to-one case, the resulting ``DataFrame`` will preserve those duplicate entries as appropriate.
+The resulting ``DataFrame`` has an aditional column with the "supervisor" information, where the information is repeated in one or more locations as required by the inputs.
+
+Many-to-many joins are a bit confusing conceptually, but are nevertheless well defined.
+If the key column in both the left and right array contains duplicates, then the result is a many-to-many merge.
+This will be perhaps most clear with a concrete example.
+Consider the following, where we have a ``DataFrame`` showing one or more skills associated with a particular group.
+By performing a many-to-many join, we can recover the skills associated with any individual person:
+
+We've already seen the default behavior of ``pd.merge()``: it looks for one or more matching column names between the two inputs, and uses this as the key.
+However, often the column names will not match so nicely, and ``pd.merge()`` provides a variety of options for handling this.
+
+Most simply, you can explicitly specify the name of the key column using the ``on`` keyword, which takes a column name or a list of column names:
+
+At times you may wish to merge two datasets with different column names; for example, we may have a dataset in which the employee name is labeled as "name" rather than "employee".
+In this case, we can use the ``left_on`` and ``right_on`` keywords to specify the two column names:
+
+Sometimes, rather than merging on a column, you would instead like to merge on an index.
+
+If you'd like to mix indices and columns, you can combine ``left_index`` with ``right_on`` or ``left_on`` with ``right_index`` to get the desired behavior:
 
 pandas provides a single function, `merge()`, as the entry point for all standard database join operations between DataFrame or named Series objects. If left is a DataFrame or named Series and right is a subclass of DataFrame, the return type will still be DataFrame. The related `join()` method, uses merge internally for the index-on-index and column(s)-on-index join. If you are joining on index only, you may wish to use `DataFrame.join` to save yourself some typing.
  There are several cases to consider which are very important to understand: one-to-one joins, many-to-one joins, many-to-many joins. In standard relational algebra, if a key combination appears more than once in both tables, the resulting table will have the Cartesian product of the associated data.
@@ -220,13 +342,29 @@ The top-level `melt()` function and the corresponding `DataFrame.melt()` are use
 
 ###### Pivot tables
 
-The function `pivot_table()` can be used to create spreadsheet-style pivot tables. It takes a number of arguments: data: a DataFrame object. values: a column or a list of columns to aggregate. 对values进行聚合时，是对每一个value进行单独的聚合，等价于分组之后，单独取每个特征进行聚合，然后在组合起来。并不是对采用了index和columns分组之后，使用values的DataFrame来进行聚合计算。index: a column, Grouper, array which has the same length as data, or list of them. Keys to group by on the pivot table index. If an array is passed, it is being used as the same manner as column values. columns: a column, Grouper, array which has the same length as data, or list of them. Keys to group by on the pivot table column. If an array is passed, it is being used as the same manner as column values. aggfunc: function to use for aggregation.
+The difference between pivot tables and ``GroupBy`` can sometimes cause confusion; it helps me to think of pivot tables as essentially a *multidimensional* version of ``GroupBy`` aggregation.
+That is, you split-apply-combine, but both the split and the combine happen across not a one-dimensional index, but across a two-dimensional grid.
+
+The function `pivot_table()` can be used to create spreadsheet-style pivot tables. It takes a number of arguments: data: a DataFrame object. values: a column or a list of columns to aggregate. 对values进行聚合时，是对每一个value进行单独的聚合，等价于分组之后，单独取每个特征进行聚合，然后在组合起来。并不是对采用了index和columns分组之后，使用values的DataFrame来进行聚合计算，`aggfunc`的输入为`Series`。`index`: a column, Grouper, array which has the same length as data, or list of them. `columns`: a column, Grouper, array which has the same length as data, or list of them.  `aggfunc`: function to use for aggregation. At times it's useful to compute totals along each grouping. This can be done via the ``margins`` keyword. The margin label can be specified with the ``margins_name`` keyword, which defaults to ``"All"``.
 
 #### Computational tools
 
 ###### Statistical functions
 
 Series and `DataFrame` have a method `pct_change()` to compute the percent change over a given number of periods. `Series.cov()` can be used to compute covariance between series. Analogously, `DataFrame.cov()` to compute pairwise covariances among the series in the `DataFrame`, also excluding NA/null values. Correlation may be computed using the `corr()` method. Using the `method` parameter, several methods for computing correlations are provided. All of these are currently computed using pairwise complete observations. A related method `corrwith()` is implemented on `DataFrame` to compute the correlation between like-labeled Series contained in different `DataFrame` objects. The `rank()` method produces a data ranking with ties being assigned the mean of the ranks for the group. `rank()` is also a `DataFrame` method and can rank either the rows or the columns. NaN values are excluded from the ranking. rank optionally takes a parameter `ascending` which by default is true; when false, data is reverse-ranked, with larger values assigned a smaller rank. rank supports different tie-breaking methods, specified with the `method` parameter: average, min, max, first: ranks assigned in the order they appear in the array.
+
+The following table summarizes some other built-in Pandas aggregations:
+
+| Aggregation              | Description                     |
+| ------------------------ | ------------------------------- |
+| ``count()``              | Total number of items           |
+| ``first()``, ``last()``  | First and last item             |
+| ``mean()``, ``median()`` | Mean and median                 |
+| ``min()``, ``max()``     | Minimum and maximum             |
+| ``std()``, ``var()``     | Standard deviation and variance |
+| ``mad()``                | Mean absolute deviation         |
+| ``prod()``               | Product of all items            |
+| ``sum()``                | Sum of all items                |
 
 ###### Window Functions
 
@@ -308,7 +446,25 @@ df.groupby(['A', 'B']).get_group(('bar', 'one'))
 
 Once you have created the `GroupBy` object from a `DataFrame`, you might want to do something different for each of the columns. Thus, using [] similar to getting a column from a `DataFrame`, you can do. With the `GroupBy` object in hand, iterating through the grouped data is very natural and functions similarly to `itertools.groupby()`. A single group can be selected using `get_group()`
 
+
+
+Notice that what is returned is not a set of ``DataFrame``s, but a ``DataFrameGroupBy`` object.
+This object is where the magic is: you can think of it as a special view of the ``DataFrame``, which is poised to dig into the groups but does no actual computation until the aggregation is applied.
+This "lazy evaluation" approach means that common aggregates can be implemented very efficiently in a way that is almost transparent to the user.
+
+To produce a result, we can apply an aggregate to this ``DataFrameGroupBy`` object, which will perform the appropriate apply/combine steps to produce the desired result:
+
+The ``GroupBy`` object is a very flexible abstraction.
+In many ways, you can simply treat it as if it's a collection of ``DataFrame``s, and it does the difficult things under the hood.
+
+The ``GroupBy`` object supports column indexing in the same way as the ``DataFrame``, and returns a modified ``GroupBy`` object.
+
+
+The ``GroupBy`` object supports direct iteration over the groups, returning each group as a ``Series`` or ``DataFrame``:
+
 ###### Aggregation
+
+the ``aggregate()`` method allows for even more flexibility. It can take a string, a function, or a list thereof, and compute all the aggregates at once.
 
 Once the GroupBy object has been created, several methods are available to perform a computation on the grouped data. An obvious one is aggregation via the `aggregate()` or equivalently `agg()` method. Any function which reduces a Series to a scalar value is an aggregation function and will work, `df.groupby('A').agg(lambda ser: 1)`. 
 
@@ -345,9 +501,14 @@ dff.groupby('B').filter(lambda x: len(x) > 2)
 
 The `filter` method returns a subset of the original object. The argument of `filter` must be a function that, applied to the group as a whole, returns `True` or `False`. For `DataFrames` with multiple columns, filters should explicitly specify a column as the filter criterion.
 
-For these, use the apply function, which can be substituted for both aggregate and transform in many standard use cases. However, apply can handle some exceptional use cases, apply on a Series can operate on a returned value from the applied function, that is itself a series, and possibly upcast the result to a DataFrame:
+For these, use the `apply` function, which can be substituted for both aggregate and transform in many standard use cases. However, apply can handle some exceptional use cases, apply on a Series can operate on a returned value from the applied function, that is itself a series, and possibly upcast the result to a DataFrame:
+
+The ``apply()`` method lets you apply an arbitrary function to the group results.
+The function should take a ``DataFrame``, and return either a Pandas object or a scalar; the combine operation will be tailored to the type of output returned.
 
 ##### Working with text data
+
+Pandas includes features to address both this need for vectorized string operations and for correctly handling missing data via the ``str`` attribute of Pandas Series and Index objects containing strings.
 
 Series and Index are equipped with a set of string processing methods that make it easy to operate on each element of the array. Perhaps most importantly, these methods exclude missing/NA values automatically. These are accessed via the `str` attribute and generally have names matching the equivalent built-in string methods.
 
@@ -422,7 +583,102 @@ The distinction between `match` and `contains` is strictness: `match` relies on 
 | `findall()`       | Compute list of all occurrences of pattern/regex for each string |
 | `count()`         | Count occurrences of pattern                                 |
 
+Nearly all Python's built-in string methods are mirrored by a Pandas vectorized string method. Here is a list of Pandas ``str`` methods that mirror Python string methods:
+
+|              |                  |                  |                  |
+| ------------ | ---------------- | ---------------- | ---------------- |
+| ``len()``    | ``lower()``      | ``translate()``  | ``islower()``    |
+| ``ljust()``  | ``upper()``      | ``startswith()`` | ``isupper()``    |
+| ``rjust()``  | ``find()``       | ``endswith()``   | ``isnumeric()``  |
+| ``center()`` | ``rfind()``      | ``isalnum()``    | ``isdecimal()``  |
+| ``zfill()``  | ``index()``      | ``isalpha()``    | ``split()``      |
+| ``strip()``  | ``rindex()``     | ``isdigit()``    | ``rsplit()``     |
+| ``rstrip()`` | ``capitalize()`` | ``isspace()``    | ``partition()``  |
+| ``lstrip()`` | ``swapcase()``   | ``istitle()``    | ``rpartition()`` |
+
+In addition, there are several methods that accept regular expressions to examine the content of each string element, and follow some of the API conventions of Python's built-in ``re`` module:
+
+| Method         | Description                                                  |
+| -------------- | ------------------------------------------------------------ |
+| ``match()``    | Call ``re.match()`` on each element, returning a boolean.    |
+| ``extract()``  | Call ``re.match()`` on each element, returning matched groups as strings. |
+| ``findall()``  | Call ``re.findall()`` on each element                        |
+| ``replace()``  | Replace occurrences of pattern with some other string        |
+| ``contains()`` | Call ``re.search()`` on each element, returning a boolean    |
+| ``count()``    | Count occurrences of pattern                                 |
+| ``split()``    | Equivalent to ``str.split()``, but accepts regexps           |
+| ``rsplit()``   | Equivalent to ``str.rsplit()``, but accepts regexps          |
+
+Finally, there are some miscellaneous methods that enable other convenient operations:
+
+| Method              | Description                                                  |
+| ------------------- | ------------------------------------------------------------ |
+| ``get()``           | Index each element                                           |
+| ``slice()``         | Slice each element                                           |
+| ``slice_replace()`` | Replace slice in each element with passed value              |
+| ``cat()``           | Concatenate strings                                          |
+| ``repeat()``        | Repeat values                                                |
+| ``normalize()``     | Return Unicode form of string                                |
+| ``pad()``           | Add whitespace to left, right, or both sides of strings      |
+| ``wrap()``          | Split long strings into lines with length less than a given width |
+| ``join()``          | Join strings in each element of the Series with passed separator |
+| ``get_dummies()``   | extract dummy variables as a dataframe                       |
+
 ##### Working with missing data
+
+The first sentinel value used by Pandas is ``None``, a Python singleton object that is often used for missing data in Python code.
+Because it is a Python object, ``None`` cannot be used in any arbitrary NumPy/Pandas array, but only in arrays with data type ``'object'`` 
+
+This ``dtype=object`` means that the best common type representation NumPy could infer for the contents of the array is that they are Python objects.
+While this kind of object array is useful for some purposes, any operations on the data will be done at the Python level, with much more overhead than the typically fast operations seen for arrays with native types:
+
+The use of Python objects in an array also means that if you perform aggregations like ``sum()`` or ``min()`` across an array with a ``None`` value, you will generally get an error:
+
+
+The other missing data representation, ``NaN``, is different; it is a special floating-point value recognized by all systems that use the standard IEEE floating-point representation:
+
+Notice that NumPy chose a native floating-point type for this array: this means that unlike the object array from before, this array supports fast operations pushed into compiled code.
+You should be aware that ``NaN`` is a bit like a data virus–it infects any other object it touches.
+Regardless of the operation, the result of arithmetic with ``NaN`` will be another ``NaN``:
+NumPy does provide some special aggregations that will ignore these missing values:
+`np.nansum(vals2), np.nanmin(vals2), np.nanmax(vals2)`
+
+Keep in mind that ``NaN`` is specifically a floating-point value; there is no equivalent NaN value for integers, strings, or other types.
+
+For types that don't have an available sentinel value, Pandas automatically type-casts when NA values are present.
+For example, if we set a value in an integer array to ``np.nan``, it will automatically be upcast to a floating-point type to accommodate the NA:
+
+The following table lists the upcasting conventions in Pandas when NA values are introduced:
+
+| Typeclass    | Conversion When Storing NAs | NA Sentinel Value      |
+| ------------ | --------------------------- | ---------------------- |
+| ``floating`` | No change                   | ``np.nan``             |
+| ``object``   | No change                   | ``None`` or ``np.nan`` |
+| ``integer``  | Cast to ``float64``         | ``np.nan``             |
+| ``boolean``  | Cast to ``object``          | ``None`` or ``np.nan`` |
+
+Keep in mind that in Pandas, string data is always stored with an ``object`` dtype.
+
+there are several useful methods for detecting, removing, and replacing null values in Pandas data structures.
+They are:
+
+- ``isnull()``: Generate a boolean mask indicating missing values
+- ``notnull()``: Opposite of ``isnull()``
+- ``dropna()``: Return a filtered version of the data
+- ``fillna()``: Return a copy of the data with missing values filled or imputed
+
+We cannot drop single values from a ``DataFrame``; we can only drop full rows or full columns.
+Depending on the application, you might want one or the other, so ``dropna()`` gives a number of options for a ``DataFrame``.
+
+By default, ``dropna()`` will drop all rows in which *any* null value is present:
+
+Alternatively, you can drop NA values along a different axis; ``axis=1`` drops all columns containing a null value:
+
+But this drops some good data as well; you might rather be interested in dropping rows or columns with *all* NA values, or a majority of NA values.
+This can be specified through the ``how`` or ``thresh`` parameters, which allow fine control of the number of nulls to allow through.
+
+The default is ``how='any'``, such that any row or column (depending on the ``axis`` keyword) containing a null value will be dropped.
+You can also specify ``how='all'``, which will only drop rows/columns that are *all* null values:
 
  While `NaN` is the default missing value marker for reasons of computational speed and convenience, we need to be able to easily detect this value with data of different types. To make detecting missing values easier, pandas provides the `isna()` and `notna()` functions. One has to be mindful that in Python, the nan's don’t compare equal, but None's do. Note that pandas/NumPy uses the fact that `np.nan != np.nan`, and treats `None` like `np.nan`.
 
@@ -523,3 +779,126 @@ pandas captures 4 general time related concepts: Date times: A specific date and
 | Time deltas  | `Timedelta`  | `TimedeltaIndex` | `timedelta64[ns]` | `to_timedelta, timedelta_range` |
 | Time spans   | `Period`     | `PeriodIndex`    | `period[freq]`    | `Period, period_range`          |
 | Date offsets | `DateOffset` | `None`           | `None`            | `DateOffset`                    |
+
+The power of ``datetime`` and ``dateutil`` lie in their flexibility and easy syntax: you can use these objects and their built-in methods to easily perform nearly any operation you might be interested in.
+Where they break down is when you wish to work with large arrays of dates and times:
+just as lists of Python numerical variables are suboptimal compared to NumPy-style typed numerical arrays, lists of Python datetime objects are suboptimal compared to typed arrays of encoded dates.
+
+The weaknesses of Python's datetime format inspired the NumPy team to add a set of native time series data type to NumPy.
+The ``datetime64`` dtype encodes dates as 64-bit integers, and thus allows arrays of dates to be represented very compactly.
+The ``datetime64`` requires a very specific input format:
+
+One detail of the ``datetime64`` and ``timedelta64`` objects is that they are built on a *fundamental time unit*.
+Because the ``datetime64`` object is limited to 64-bit precision, the range of encodable times is $2^{64}$ times this fundamental unit.
+In other words, ``datetime64`` imposes a trade-off between *time resolution* and *maximum time span*.
+
+Notice that the time zone is automatically set to the local time on the computer executing the code.
+You can force any desired fundamental unit using one of many format codes;
+
+The following table,lists the available format codes
+along with the relative and absolute timespans that they can encode:
+
+| Code   | Meaning     | Time span (relative) | Time span (absolute)   |
+| ------ | ----------- | -------------------- | ---------------------- |
+| ``Y``  | Year        | ± 9.2e18 years       | [9.2e18 BC, 9.2e18 AD] |
+| ``M``  | Month       | ± 7.6e17 years       | [7.6e17 BC, 7.6e17 AD] |
+| ``W``  | Week        | ± 1.7e17 years       | [1.7e17 BC, 1.7e17 AD] |
+| ``D``  | Day         | ± 2.5e16 years       | [2.5e16 BC, 2.5e16 AD] |
+| ``h``  | Hour        | ± 1.0e15 years       | [1.0e15 BC, 1.0e15 AD] |
+| ``m``  | Minute      | ± 1.7e13 years       | [1.7e13 BC, 1.7e13 AD] |
+| ``s``  | Second      | ± 2.9e12 years       | [ 2.9e9 BC, 2.9e9 AD]  |
+| ``ms`` | Millisecond | ± 2.9e9 years        | [ 2.9e6 BC, 2.9e6 AD]  |
+| ``us`` | Microsecond | ± 2.9e6 years        | [290301 BC, 294241 AD] |
+| ``ns`` | Nanosecond  | ± 292 years          | [ 1678 AD, 2262 AD]    |
+| ``ps`` | Picosecond  | ± 106 days           | [ 1969 AD, 1970 AD]    |
+| ``fs`` | Femtosecond | ± 2.6 hours          | [ 1969 AD, 1970 AD]    |
+| ``as`` | Attosecond  | ± 9.2 seconds        | [ 1969 AD, 1970 AD]    |
+
+Pandas builds upon all the tools just discussed to provide a ``Timestamp`` object, which combines the ease-of-use of ``datetime`` and ``dateutil`` with the efficient storage and vectorized interface of ``numpy.datetime64``.
+From a group of these ``Timestamp`` objects, Pandas can construct a ``DatetimeIndex`` that can be used to index data in a ``Series`` or ``DataFrame``; 
+
+any of the ``Series`` indexing patterns we discussed in previous sections, passing values that can be coerced into dates:
+
+the fundamental Pandas data structures for working with time series data:
+
+- For *time stamps*, Pandas provides the ``Timestamp`` type. As mentioned before, it is essentially a replacement for Python's native ``datetime``, but is based on the more efficient ``numpy.datetime64`` data type. The associated Index structure is ``DatetimeIndex``.
+- For *time Periods*, Pandas provides the ``Period`` type. This encodes a fixed-frequency interval based on ``numpy.datetime64``. The associated index structure is ``PeriodIndex``.
+- For *time deltas* or *durations*, Pandas provides the ``Timedelta`` type. ``Timedelta`` is a more efficient replacement for Python's native ``datetime.timedelta`` type, and is based on ``numpy.timedelta64``. The associated index structure is ``TimedeltaIndex``.
+
+Any ``DatetimeIndex`` can be converted to a ``PeriodIndex`` with the ``to_period()`` function with the addition of a frequency code; 
+
+A ``TimedeltaIndex`` is created,when a date is subtracted from another:
+
+To make the creation of regular date sequences more convenient, Pandas offers a few functions for this purpose: ``pd.date_range()`` for timestamps, ``pd.period_range()`` for periods, and ``pd.timedelta_range()`` for time deltas.
+We've seen that Python's ``range()`` and NumPy's ``np.arange()`` turn a startpoint, endpoint, and optional stepsize into a sequence.
+Similarly, ``pd.date_range()`` accepts a start date, an end date, and an optional frequency code to create a regular sequence of dates.
+By default, the frequency is one day:
+
+Fundamental to these Pandas time series tools is the concept of a frequency or date offset.
+The following table summarizes the main codes available:
+
+| Code  | Description  | Code   | Description          |
+| ----- | ------------ | ------ | -------------------- |
+| ``D`` | Calendar day | ``B``  | Business day         |
+| ``W`` | Weekly       |        |                      |
+| ``M`` | Month end    | ``BM`` | Business month end   |
+| ``Q`` | Quarter end  | ``BQ`` | Business quarter end |
+| ``A`` | Year end     | ``BA`` | Business year end    |
+| ``H`` | Hours        | ``BH`` | Business hours       |
+| ``T`` | Minutes      |        |                      |
+| ``S`` | Seconds      |        |                      |
+| ``L`` | Milliseonds  |        |                      |
+| ``U`` | Microseconds |        |                      |
+| ``N`` | nanoseconds  |        |                      |
+
+The monthly, quarterly, and annual frequencies are all marked at the end of the specified period.
+By adding an ``S`` suffix to any of these, they instead will be marked at the beginning:
+
+| Code   | Description   |      | Code    | Description            |
+| ------ | ------------- | ---- | ------- | ---------------------- |
+| ``MS`` | Month start   |      | ``BMS`` | Business month start   |
+| ``QS`` | Quarter start |      | ``BQS`` | Business quarter start |
+| ``AS`` | Year start    |      | ``BAS`` | Business year start    |
+
+Additionally, you can change the month used to mark any quarterly or annual code by adding a three-letter month code as a suffix:
+
+- ``Q-JAN``, ``BQ-FEB``, ``QS-MAR``, ``BQS-APR``, etc.
+- ``A-JAN``, ``BA-FEB``, ``AS-MAR``, ``BAS-APR``, etc.
+
+In the same way, the split-point of the weekly frequency can be modified by adding a three-letter weekday code:
+
+- ``W-SUN``, ``W-MON``, ``W-TUE``, ``W-WED``, etc.
+
+On top of this, codes can be combined with numbers to specify other frequencies.
+For example, for a frequency of 2 hours 30 minutes, we can combine the hour (``H``) and minute (``T``) codes as follows:
+
+All of these short codes refer to specific instances of Pandas time series offsets, which can be found in the ``pd.tseries.offsets`` module.
+
+One common need for time series data is resampling at a higher or lower frequency.
+This can be done using the ``resample()`` method, or the much simpler ``asfreq()`` method.
+The primary difference between the two is that ``resample()`` is fundamentally a *data aggregation*, while ``asfreq()`` is fundamentally a *data selection*.
+
+For up-sampling, ``resample()`` and ``asfreq()`` are largely equivalent, though resample has many more options available.
+In this case, the default for both methods is to leave the up-sampled points empty, that is, filled with NA values.
+Just as with the ``pd.fillna()`` function discussed previously, ``asfreq()`` accepts a ``method`` argument to specify how values are imputed.
+
+Another common time series-specific operation is shifting of data in time.
+Pandas has two closely related methods for computing this: ``shift()`` and ``tshift()``
+In short, the difference between them is that ``shift()`` *shifts the data*, while ``tshift()`` *shifts the index*.
+In both cases, the shift is specified in multiples of the frequency.
+
+##### Performance
+
+Because NumPy evaluates each subexpression, In other words, every intermediate step is explicitly allocated in memory. If the ``x`` and ``y`` arrays are very large, this can lead to significant memory and computational overhead.
+The `Numexpr` library gives you the ability to compute this type of compound expression element by element, without the need to allocate full intermediate arrays.
+
+The ``eval()`` function in Pandas uses string expressions to efficiently compute operations using ``DataFrame``s. ``pd.eval()`` supports the ``&`` and ``|`` bitwise operators. In addition, it supports the use of the literal ``and`` and ``or`` in Boolean expressions. ``pd.eval()`` supports access to object attributes via the ``obj.attr`` syntax, and indexes via the ``obj[index]`` syntax. Just as Pandas has a top-level ``pd.eval()`` function, ``DataFrame``s have an ``eval()`` method that works in similar ways.
+The benefit of the ``eval()`` method is that columns can be referred to *by name*.
+
+In addition to the options just discussed, ``DataFrame.eval()``  also allows assignment to any column.
+Let's use the ``DataFrame`` from before, which has columns ``'A'``, ``'B'``, and ``'C'``:
+
+We can use ``df.eval()`` to create a new column ``'D'`` and assign to it a value computed from the other columns. In the same way, any existing column can be modified:
+
+The ``@`` character here marks a *variable name* rather than a *column name*, and lets you efficiently evaluate expressions involving the two "namespaces": the namespace of columns, and the namespace of Python objects.
+Notice that this ``@`` character is only supported by the ``DataFrame.eval()`` *method*, not by the ``pandas.eval()`` *function*, because the ``pandas.eval()`` function only has access to the one (Python) namespace.
