@@ -67,6 +67,3 @@ class ValidResult:
             tab.add(temp, key)
         return tab
         
-        
-        
-rs = ResultShow()

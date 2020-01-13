@@ -161,6 +161,7 @@ class LGBOnehot(PreprocessME, ProcessMethod):
         result = pd.concat([result, df_num], axis=1)
         return result
 
+
 class ModelME:
     def __init__(self, X, y, imbalance=False, **kwargs):
         self.est = self.init_est(**kwargs)
@@ -194,6 +195,7 @@ class ModelME:
 
 
 class GradientME(ModelME):
+
     def get_label(self, data):
         '''计算评价函数的辅助函数，从xgboost和lightgbm的数据结构中得到y值'''
         label = data.get_label()
@@ -412,7 +414,7 @@ class ValidResult:
     def indicate(self, y, ypred, bin_num=1):
         _, bins = self.get_group(y, ypred)
         y1 = (ypred > bins[bin_num-1]).astype(int)
-        columns = ['名称', '正确百分比'] r
+        columns = ['名称', '正确百分比']
         indexs = ['准确率', '精确率', '召回率']
         indexs2 = ['灵敏度', '特异度', 'F1统计']
         df1 = pd.DataFrame(columns=columns)
@@ -437,11 +439,11 @@ class ME:
     @abstractmethod
     def init_model(self):
         pass
-    def train(X, y, imbalance=False, drop_col=None, cat_col=None):
+    def train(self, X, y, imbalance=False, drop_col=None, cat_col=None):
         Xt = self.preprocess.get_train_data(X, y, drop_col, cat_col)
         result = self.model.fit(Xt, y, imbalance)
         return result
-    def predict(X, best='auc', pred_contrib=False):
+    def predict(self, X, best='auc', pred_contrib=False):
         Xv = self.preprocess.get_test_data(X)
         result, contrib = self.model.predict_proba(Xv, best, pred_contrib)
         return result, contrib

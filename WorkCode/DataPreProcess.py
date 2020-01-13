@@ -23,6 +23,7 @@ def split_cat_num(data, cat=15):
 
 
 class FeatureStatistics:
+    '''得到数据的基本信息以及对可视化数据的分布。'''
 
     def split(self, data):  # 划分类别和数值特征
         numerical = data.select_dtypes(exclude='object')
@@ -37,6 +38,8 @@ class FeatureStatistics:
             _ = self.describe_cat(categorical)
 
     def _describe_all(self, data):
+        '''类别特征和数值特征共有的一些特征信息，包括数据名，空值比例，取值个数，高频比例
+        高频数，同时记录样本数数。'''
         length = data.shape[0]
         result = pd.DataFrame(columns=['数据名', '空值比例', '类别数', '高频类别', '高频类别比例'])
         result['数据名'] = data.columns
@@ -48,7 +51,8 @@ class FeatureStatistics:
         return result, length
 
     def describe_num(self, numerical, stat=False):
-        '''得到数值特征的统计特征，主要为缺失值、高频值、负值比例、其他统计特征'''
+        '''得到数值特征的统计特征，除去共有的特征信息外，增加了负值比例，零值比例，
+        也可以根据具体情况也可以查看数值特征的一些统计特征：最大最小值，均值等。'''
         self.num, length = self._describe_all(numerical)
         self.num['负值比例'] = (numerical < 0).sum()/length
         self.num['零值比例'] = (numerical == 0).sum()/length
@@ -58,7 +62,8 @@ class FeatureStatistics:
         self.num = self.num.reset_index()
         return self.num
 
-    def statistic(self, numerical):  # 得到数值特征的统计特征。
+    def statistic(self, numerical):
+        '''得到数值特征的一些统计特征，为了展示的简洁，这部分信息可以选择性的查看。'''
         stat = pd.DataFrame(
             columns=['数据名', '最大值', '最小值', '中位数', '均值', '偏度', '峰度'])
         stat['数据名'] = numerical.columns
@@ -72,14 +77,16 @@ class FeatureStatistics:
         return stat
 
     def describe_cat(self, categorical):
-        '''得到类别特征的信息，包括空值、高频值、熵值越接近0代表分布越集中，越接近1代表分布越分散。'''
+        '''得到类别特征的信息，除去共有的特征信息外，增加了熵值，
+        越接近0代表分布越集中，越接近1代表分布越分散。'''
         self.cat, _ = self._describe_all(categorical)
         self.cat['熵'] = categorical.apply(lambda x: stats.entropy(
             x.value_counts(normalize=True), base=2))/np.log2(self.cat['类别数'])  
         self.cat = self.cat.reset_index()
         return self.cat
 
-    def plot(self, data):  # 可视化类别和数值特征，数值默认为分布图，类别默认为柱状图
+    def plot(self, data):
+        '''可视化类别和数值特征，数值默认为分布图，类别默认为柱状图'''
         numerical, categorical = self.split(data)
         if not numerical.empty:
             self.plot_numerical(numerical)
@@ -94,6 +101,9 @@ class FeatureStatistics:
         g.map(style, 'value')
 
     def plot_categories(self, categorical):
+        '''类别特征的可视化，对于取值较多的类别特征，这里面定义为大于50个，为了
+        可视化的效果，将绘制出现频率的散点图，小于等于50个将绘制条形图。可视化函数
+        由_catplot函数实现。'''
         melt = pd.melt(categorical)
         g = sns.FacetGrid(data=melt, col="variable",
                           col_wrap=4, sharex=False, sharey=False)
@@ -111,6 +121,7 @@ class FeatureStatistics:
 
 
 class CatNum():
+    '''针对类别特征和数值特征可视化的类别，更加具体的可视化特征的一些信息。'''
     def __init__(self):
         self.font1 = {'family': 'Calibri', 'weight': 'normal', 'size': 14}
         self.font2 = {'family': 'Calibri', 'weight': 'normal', 'size': 18}
@@ -181,6 +192,7 @@ class Categorical(CatNum):
         return ax1
 
     def plot_bar_line(self, data, feature, target, ax=None):
+        '''可视化类别特征中样本的频率，和目标变量的分布情况。'''
         ax = self.get_ax(ax)
         df = pd.crosstab(data[feature], data[target])
         df.plot(kind='bar', stacked=True, ax=ax, alpha=0.7)
