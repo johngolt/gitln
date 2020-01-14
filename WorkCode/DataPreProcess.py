@@ -93,21 +93,21 @@ class FeatureStatistics:
         if not categorical.empty:
             self.plot_categories(categorical)
 
-    def plot_numerical(self, numerical, style=sns.distplot):
-        '''数值特征的可视化，包括箱型图，kdeplot, histplot'''
+    def plot_numerical(self, numerical, style=sns.distplot, **kwargs):
+        '''数值特征的可视化，包括kdeplot'''
         melt = pd.melt(numerical)
         g = sns.FacetGrid(data=melt, col="variable",
                           col_wrap=4, sharex=False, sharey=False)
-        g.map(style, 'value')
+        g.map(style, 'value', **kwargs)
 
-    def plot_categories(self, categorical):
+    def plot_categories(self, categorical, **kwargs):
         '''类别特征的可视化，对于取值较多的类别特征，这里面定义为大于50个，为了
         可视化的效果，将绘制出现频率的散点图，小于等于50个将绘制条形图。可视化函数
         由_catplot函数实现。'''
         melt = pd.melt(categorical)
         g = sns.FacetGrid(data=melt, col="variable",
                           col_wrap=4, sharex=False, sharey=False)
-        g.map(self._catplot, 'value')
+        g.map(self._catplot, 'value', **kwargs)
 
     def _catplot(self, ser, **kwarg):  # 类别特征的可视化
         count = ser.value_counts()
@@ -120,7 +120,7 @@ class FeatureStatistics:
             sns.barplot(x=count.index, y=count.values, ax=ax, **kwarg)
 
 
-class CatNum():
+class PlotFunc:
     '''针对类别特征和数值特征可视化的类别，更加具体的可视化特征的一些信息。'''
     def __init__(self):
         self.font1 = {'family': 'Calibri', 'weight': 'normal', 'size': 14}
@@ -128,13 +128,30 @@ class CatNum():
 
     def get_ax(self, ax=None):
         if ax is None:
-            fig = plt.figure(figsize=(6, 5))
+            fig = plt.figure(figsize=(6,5))
             ax = fig.add_subplot()
             return ax
         return ax
 
+    def plot_bin(self, data, ax=None):
+        ax = self.get_ax(ax)
+        data.columns = ['a', 'b']
+        ax.vlines(x=data.index, ymin=0,
+                  ymax=data['b'], color='firebrick', alpha=0.7, linewidth=2)
+        ax.scatter(x=data.index, y=data['b'],
+                   s=75, color='firebrick', alpha=0.7)
 
-class Categorical(CatNum):
+        ax.set_xticks(data.index)
+        ax.set_xticklabels(data['a'], rotation=90,
+                        fontdict={'horizontalalignment': 'right', 'size': 12})
+
+        for row in data.itertuples():
+            ax.text(row.Index, row.b*1.01, s=round(row.b, 1), 
+            horizontalalignment='center', verticalalignment='bottom', fontsize=14)
+        return ax
+
+
+class Categorical(PlotFunc):
     '''对类别特征进行分析，适合取值不多的类别特征。对于取值很多的类别特征可视化效果不好'''
 
     def _crosstab(self, data, feature, target, ax=None):
@@ -143,6 +160,7 @@ class Categorical(CatNum):
         ct = pd.crosstab(data[feature], data[target], normalize='index')
         ct.plot(kind='bar', stacked=True, ax=ax)
         ax.set_title('{}'.format(feature))
+        ax.axhline(1-data[target].mean(), color="crimson", alpha=0.9, linestyle="--")
         ax.set_ylim(0, 1)
         plt.ylabel('{} Rate'.format(target))
         ax.set_xlabel('')
@@ -154,9 +172,8 @@ class Categorical(CatNum):
         grid = gridspec.GridSpec(nrows=nrows, ncols=4)
         for i, each in enumerate(features):
             ax = fig.add_subplot(grid[i])
-            self._crosstab(data, target, each, ax=ax)
+            self._crosstab(data, each, target, ax=ax)
         fig.subplots_adjust(wspace=0.3, hspace=0.2)
-        return fig, ax
 
     def plot_dists(self, data, features, target):
         nrows = len(features)
@@ -167,7 +184,6 @@ class Categorical(CatNum):
             ax1 = fig.add_subplot(grid[i, 1])
             self.plot_dist(data, each, target, [ax, ax1])
         fig.subplots_adjust(wspace=0.5, hspace=0.5)
-        return fig
 
     def plot_dist(self, data, feature, target, ax=None):
         if ax is None:
@@ -195,11 +211,13 @@ class Categorical(CatNum):
         '''可视化类别特征中样本的频率，和目标变量的分布情况。'''
         ax = self.get_ax(ax)
         df = pd.crosstab(data[feature], data[target])
-        df.plot(kind='bar', stacked=True, ax=ax, alpha=0.7)
+        ax = df.plot(kind='bar', stacked=True, ax=ax, alpha=0.7)
         ax.set_title('{} distribution'.format(feature), fontdict=self.font2)
         ax.set_ylabel('Frequency', fontdict=self.font1, labelpad=6)
         ax.set_ylim(bottom=0, top=len(data))
         ax.legend(loc=2)
+
+        ax.xaxis.set_ticklabels(df.index)
         xs = ax.xaxis.get_ticklocs()
         odds = df[1]/df[0]
         axt = ax.twinx()
@@ -210,15 +228,17 @@ class Categorical(CatNum):
         return ax
 
 
-class Numerical(CatNum):
+class Numerical(PlotFunc):
 
     def drop_null_item(self, data, feature=None):
+        '''丢弃特征中确实的样本。'''
         if feature is None:
             return data[data.notnull()]
         temp = data.loc[data[feature].notnull(), feature]
         return temp
 
-    def _kstest(self, data, feature):  # 检验特征分布是否为正态分布。
+    def _kstest(self, data, feature): 
+        '''数值特征的正态性检验，确定分布是否符合正态分布。'''
         mean, std = data[feature].mean(), data[feature].std()
         temp = self.drop_null_item(data, feature)
         _, pvalue = stats.kstest(temp, stats.norm(mean, std).cdf)
@@ -230,79 +250,84 @@ class Numerical(CatNum):
     def kstests(self, data, features):
         mask = [self._kstest(data, each) for each in features]
         return mask
+    
+    def plot_strips(self, data, features, target, ax=None):
+        '''按照label,对数据集中的数值特征绘制stripplot，可以根据图形从中寻找到
+        数值特征中的异常值。'''
+        nrows, ncols = len(features)//2+1, 2
+        grid = gridspec.GridSpec(nrows, ncols)
+        fig = plt.figure(figsize=(16, 20*nrows//3))
+        for i, feature in enumerate(features):
+            ax = fig.add_subplot(grid[i])
+            sns.stripplot(target, feature, jitter=True, palette='muted',
+                       order=[0,1], data=data, ax=ax)
 
-    def plot_kde(self, data, feature, ax=None):
+    def plot_kde(self, data, feature, ax=None, **kwargs):
+        '''绘制数值特征的kernel density estimation，同时采用
+        正太分布进行对照。'''
         ax = self.get_ax(ax)
         sample = self.drop_null_item(data, feature).to_numpy()
-        dist = stats.kde.gaussian_kde(sample)
-        sample.sort()
-        ax.plot(sample, dist.pdf(sample), label='kde')
-        mean, std = sample.mean(), sample.std()
-        ax.plot(sample, stats.norm(mean, std).pdf(
-            sample), color='k', label='norm')
+        ax = sns.distplot(sample,hist=False, fit=stats.norm, ax=ax, **kwargs)
+        ax.legend(ax.lines, ['kde','norm'],loc=1)
         ax.set_title('{} kde distribution'.format(
             feature), fontdict=self.font1)
         ax.set_ylabel('Probability', fontdict=self.font2, labelpad=6)
-        ax.legend(loc=2)
         return ax
 
-    def plot_kdes(self, data, features):  # 绘制kde图
+    def plot_kdes(self, data, features, **kwargs):
         nrows = len(features)//2+1
         fig = plt.figure(figsize=(10, 5*nrows))
         grid = gridspec.GridSpec(nrows=nrows, ncols=2)
         for i, each in enumerate(features):
             ax = fig.add_subplot(grid[i])
-            self.plot_kde(data, each, ax=ax)
+            self.plot_kde(data, each, ax=ax, **kwargs)
         fig.subplots_adjust(wspace=0.5, hspace=0.5)
-        return fig
 
-    def plot_boxs(self, data, features):  # 绘制箱型图
+    def plot_boxs(self, data, features, **kwargs):
         nrows = len(features)//2+1
         fig = plt.figure(figsize=(10, 5*nrows))
         grid = gridspec.GridSpec(nrows=nrows, ncols=2)
         for i, each in enumerate(features):
             ax = fig.add_subplot(grid[i])
-            _ = self.plot_box(data, each, ax=ax)
+            _ = self.plot_box(data, each, ax=ax, **kwargs)
         fig.subplots_adjust(wspace=0.5, hspace=0.5)
-        return fig
 
-    def plot_box(self, data, feature, ax=None):
+    def plot_box(self, data, feature, ax=None, **kwargs):
+        '''绘制数值特征的箱型图。'''
         ax = self.get_ax(ax)
-        sns.boxplot(data[feature], ax=ax, orient='v')
+        sns.boxplot(data[feature], ax=ax, orient='v', **kwargs)
         ax.set_title('{} boxplot'.format(feature), fontdict=self.font2)
         ax.set_ylabel('{}'.format(feature), fontdict=self.font1, labelpad=6)
         return ax
 
-    def plot_hists(self, data, features, target):
+    def plot_hists(self, data, features, target, bins=50):
         nrows = len(features)
         fig = plt.figure(figsize=(8, 4*nrows))
         grid = gridspec.GridSpec(nrows=nrows, ncols=2)
         for i, each in enumerate(features):
             ax = fig.add_subplot(grid[i, 0])
-            self.plot_hist(data, each, ax=ax)
+            self.plot_hist(data, each, ax=ax, bins=bins)
             ax1 = fig.add_subplot(grid[i, 1])
-            self.plot_hist_line(data, each, target, ax=ax1)
+            self.plot_hist_line(data, each, target, ax=ax1, bins=bins)
         fig.subplots_adjust(wspace=0.5, hspace=0.5)
-        return fig
 
-    def plot_hist(self, data, feature, ax=None):
+    def plot_hist(self, data, feature, ax=None, bins=50):
+        '''绘制数值特征的条形图'''
         ax = self.get_ax(ax)
         temp = self.drop_null_item(data, feature)
-        bins = int(np.sqrt(temp.shape[0]))
+        bins = min(int(np.sqrt(temp.shape[0])),bins)
         _ = ax.hist(data[feature], bins=bins, alpha=0.7)
         ax.set_title('{} distribution'.format(feature), fontdict=self.font2)
         ax.set_xlabel('{}'.format(feature), fontdict=self.font1, labelpad=2)
         ax.set_ylabel('frequency', fontdict=self.font1, labelpad=6)
         return ax
 
-    def plot_hist_line(self, data, feature, target, ax=None):
-        '''调用 ax.hist 创建直方图，会返回3个返回值，第一个返回值n就是一个向量，
-        记录了这个直方图的每个柱子的高度。而想做叠加的直方图，可以再使用一条 ax.hist语句，将bottom设置为上一个图返回的n。
-        而bins返回的是每个区间的端点，是一个数组，共含(n+1)个值。'''
+    def plot_hist_line(self, data, feature, target, ax=None, bins=50):
+        '''绘制在目标变量下数值特征的条形图，同时查看目标在特征不同区间下的分布。'''
         ax = self.get_ax(ax)
         X0 = data.loc[data[target] == 0, feature]
         X1 = data.loc[data[target] == 1, feature]
-        bins = int(np.sqrt(min(len(X0), len(X1))))
+        bins = min(int(np.sqrt(min(len(X0), len(X1)))),bins)
         X0 = self.drop_null_item(X0)
         X1 = self.drop_null_item(X1)
         n1, bins1, _ = ax.hist(X0, bins=bins, alpha=0.6, label='Target=0')
@@ -318,34 +343,6 @@ class Numerical(CatNum):
         axt.plot(xs, ys, marker='*')
         axt.axhline(odds, color='crimson', alpha=0.8, linestyle='--')
         axt.set_ylabel('Odds', fontdict=self.font1, labelpad=6)
-        return ax
-
-
-class PlotFunc:
-
-    def get_ax(self, ax=None):
-        if ax is None:
-            fig = plt.figure(figsize=(8,5))
-            ax = fig.add_subplot()
-            return ax
-        return ax
-
-    def plot_bin(self, data, ax=None):
-        ax = self.get_ax(ax)
-        data.columns = ['a', 'b']
-        ax.vlines(x=data.index, ymin=0,
-                  ymax=data['b'], color='firebrick', alpha=0.7, linewidth=2)
-        ax.scatter(x=data.index, y=data['b'],
-                   s=75, color='firebrick', alpha=0.7)
-
-        ax.set_title('Missing Rate', fontdict={'size': 22})
-        ax.set_xticks(data.index)
-        ax.set_xticklabels(data['a'], rotation=90,
-                        fontdict={'horizontalalignment': 'right', 'size': 12})
-
-        for row in data.itertuples():
-            ax.text(row.Index, row.b*1.01, s=round(row.b, 1), 
-            horizontalalignment='center', verticalalignment='bottom', fontsize=14)
         return ax
 
 
@@ -385,24 +382,33 @@ class Constant(PlotFunc):
         ser, _ = self.most_frequent(data)
         ser = ser[:N]
         data = ser.reset_index()
-        self.plot_bin(data, ax=ax)
+        ax = self.plot_bin(data, ax=ax)
+        ax.set_title('Most Frequency', fontdict={'size': 18})
 
-    def frequence_bin(self, data, features):
+    def frequence_bin(self, data, features, col_large=None):
         '''对特征进行0-1编码的特征，出现次数最多的的样本为一类，其他的为一类'''
         result = data[features].copy()
-        for each in features:
-            col_large = result[each].value_counts().idxmax()
-            result[each+'_bins'] = (result[each] == col_large).astype(int)
-        return result
+        if col_large is None:
+            col_larges={}
+            for each in features:
+                col_large = result[each].value_counts().idxmax()
+                col_larges[each] = col_large
+                result[each+'_bins'] = (result[each] == col_large).astype(int)
+                return result, col_larges
+        else:
+            for each in features:
+                result[each+'_bins'] = (result[each] == col_large[each]).astype(int)
+            return result
 
     def delete_frequency(self, data, threshold=None):
-        '''对于没有明显差异，同时特征中某个值出现的概率很高的特征进行删除。 '''
+        '''特征中某个值出现的概率很高的特征进行删除。 '''
         if threshold is None:
             threshold = self.deletes
         result = data.copy()
         col_most, _ = self.most_frequent(result)
         large_percent_cols = list(
             col_most[col_most['max percent'] >= threshold].index)
+
         result = result.drop(large_percent_cols, axis=1)
         return result, large_percent_cols
 
@@ -410,6 +416,7 @@ class Constant(PlotFunc):
         col_most, col_large_value = self.most_frequent(X)
         large_percent_cols = list(
             col_most[col_most['max percent'] >= self.deletes].index)
+
         self.large_percent_ = large_percent_cols
         self.col_large_ = col_large_value
         return self
@@ -424,6 +431,7 @@ class Constant(PlotFunc):
         col_most, col_large_value = self.most_frequent(X)
         large_percent_cols = list(
             col_most[col_most['max percent'] >= self.deletes].index)
+
         self.large_percent_ = large_percent_cols
         self.col_large_ = col_large_value
         result = result.drop(large_percent_cols, axis=1)
@@ -509,7 +517,8 @@ class Missing(PlotFunc):
             ascending=False)
         ser = ser[ser > 0]
         data = ser.reset_index()
-        self.plot_bin(data, ax=ax)
+        ax = self.plot_bin(data, ax=ax)
+        ax.set_title('Missing Rate', fontdict={'size': 18})
 
     def plot_item_miss(self, data):
         '''将每个样本的缺失值个数按从小到大绘制出来。'''
@@ -525,12 +534,13 @@ class Missing(PlotFunc):
         index = ratio[ratio >= threshold].index
         return index
 
-    def delete_null(self, data, threshold=None):
+    def delete_null(self, data, threshold=None, index=None):
         '''删除缺失比例较高的特征，同时将缺失比例较高的样本作为缺失值删除。'''
         result = data.copy()
         if threshold is None:
             threshold = self.delete
-        index = self.find_index(data, threshold)
+        if index is None:
+            index = self.find_index(data, threshold)
         result = result.drop(index, axis=1)
         return index, result
 
@@ -543,44 +553,47 @@ class Missing(PlotFunc):
         result = result.drop(index2)
         return result
 
-    def indicator_null(self, data, threshold=None):
+    def indicator_null(self, data, threshold=None, index=None):
         '''生产特征是否为缺失的指示特征，同时删除原特征。'''
         result = data.copy()
         if threshold is None:
             threshold = self.indicator
-        index = self.find_index(data, threshold)
+        if index is None:
+            index = self.find_index(data, threshold)
         for each in index:
             result['is_null_'+each] = pd.isnull(result[each]).astype(int)
         result = result.drop(index, axis=1)
         return index, result
 
-    def another_class(self, data, features):
+    def another_class(self, data, features, fill_value=None):
         '''对于特征而言，可以将缺失值另作一类'''
         result = data.loc[:, features].copy()
-        fill_value = {}
-        for each in features:
-            if data[each].dtype == 'object':
-                fill_value[each] = 'None'
-            else:
-                fill_value[each] = int(data[each].max()+1)
-        result.fillna(self.fill_value_)
+        if fill_value is None
+            fill_value = {}
+            for each in features:
+                if data[each].dtype == 'object':
+                    fill_value[each] = 'None'
+                else:
+                    fill_value[each] = int(data[each].max()+1)
+        result.fillna(fill_value)
         return fill_value, result
 
-    def bin_and_fill(self, data, features):
+    def bin_and_fill(self, data, features, fill_value=None):
         '''对于一些数值特征，我们可以使用中位数填补，但是为了不丢失缺失信息，同时可以进行编码。'''
         result = data.loc[:, features].copy()
-        fill_value = {}
+        if full_value is None:
+            fill_value = result[features].median().to_dict()
         for each in features:
             result['is_null_'+each] = pd.isnull(data[each]).astype(int)
-            fill_value[each] = data[each].median()
             result[each] = data[each].fillna(fill_value[each])
         return fill_value, result
 
-    def fill_null(self, data, features):
+    def fill_null(self, data, features, fill_value=None):
         '''对于缺失率很小的数值特征，使用中位数填补缺失值'''
         result = data.loc[:, features].copy()
-        fill_value = result.median().to_dict()
-        result = result.fillna(result.median())
+        if fill_value is None:
+            fill_value = result.median().to_dict()
+        result = result.fillna(fill_value)
         return fill_value, result
 
     def fit(self, X, y=None):
@@ -615,8 +628,9 @@ class FeatureStability:
     def __init__(self, threshold=0.05):
         self.pvalue = threshold
 
-    def num_stab_test(self, train, test, feature=None):  # 检验数值特征在训练集和测试集分布是否一致,ks检验
-        '''Compute the Kolmogorov-Smirnov statistic on 2 samples.'''
+    def num_stab_test(self, train, test, feature=None):
+        '''Compute the Kolmogorov-Smirnov statistic on 2 samples.
+        检验数值特征在训练集和测试集分布是否一致,ks检验'''
         if feature is None:
             _, pvalue = stats.ks_2samp(train, test)
         else:
@@ -655,7 +669,8 @@ class FeatureStability:
         res = pd.Series(value, index=features)
         return res
     
-    def cat_stab_test(self, train, test, feature=None):  # 检验类别特征在训练集和测试集分布是否一致。chi2检验
+    def cat_stab_test(self, train, test, feature=None):
+        '''检验类别特征在训练集和测试集分布是否一致。chi2检验'''
         count, count1 = self.get_value_count(train, test, feature,normalize=False)
         data = pd.concat([count,count1],axis=1)
         _, pvalue,*_ = stats.chi2_contingency(data.to_numpy().T, correction=False)
@@ -736,83 +751,3 @@ class FeatureStability:
                 plt.legend(loc=2)
         else:
             raise TypeError('{} is not right datatype'.format(type(features)))
-
-
-class Outlier:
-    def __init__(self, method=sns.stripplot):
-        self.method = method
-
-    def plot_num_data(self, data, target, features=None):
-        '''按照label,对数据集中的数值特征绘制stripplot，可以根据图形从中寻找到
-        数值特征中的异常值。'''
-        if features is None:
-            _, num, _ = split_cat_num(data)
-        else:
-            num = features
-        data = pd.concat([data, target], axis=1)
-        name = target.name
-        melt = pd.melt(data, id_vars=name,
-                       value_vars=[f for f in num])
-        g = sns.FacetGrid(data=melt, col="variable", col_wrap=4,
-                          sharex=False, sharey=False)
-        g.map(self.method, name, 'value', jitter=True,
-              palette="muted", order=[0, 1])
-
-    def plot_cat_data(self, data, y, features=None):
-        if features is None:
-            cat, _, n_index = split_cat_num(data)
-            cols = cat.union(n_index)
-        else:
-            cols = features
-        self.ploting_cat_fet(data, cols, y)
-
-    def ploting_cat_fet(self, df, cols, y):
-        '''绘制类别特征，柱状图为每个值在特征中出现的数目及所占的比例，折线图为每个取值
-        情况下，其中的坏样本率。'''
-        plt.rcParams['font.family'] = ['sans-serif']
-        plt.rcParams['font.sans-serif'] = ['SimHei']  # 可以显示中文
-        plt.rcParams['axes.unicode_minus'] = False  # 可以显示负号
-        total = len(df)
-        # 图形的参数设置
-        nrows, ncols = len(cols)//2+1, 2
-        grid = gridspec.GridSpec(nrows, ncols)
-        fig = plt.figure(figsize=(16, 20*nrows//3))
-        df = pd.concat([df, y], axis=1)
-        name = y.name
-
-        for n, col in enumerate(cols):
-            tmp = pd.crosstab(df[col], df[name],
-                              normalize='index') * 100
-            tmp = tmp.reset_index()
-            tmp.rename(columns={0: 'No', 1: 'Yes'}, inplace=True)
-
-            ax = fig.add_subplot(grid[n])
-            sns.countplot(x=col, data=df, order=list(tmp[col].values),
-                          color='green')  # 绘制柱状图
-
-            ax.set_ylabel('Count', fontsize=12)  # 设置柱状图的参数
-            ax.set_title(f'{col} Distribution by Target', fontsize=14)
-            ax.set_xlabel(f'{col} values', fontsize=12)
-
-            gt = ax.twinx()  # 绘制折线图
-            gt = sns.pointplot(x=col, y='Yes', data=tmp,
-                               order=list(tmp[col].values),
-                               color='black', legend=False)
-
-            mn, mx = gt.get_xbound()  # 绘制水平线
-            gt.hlines(y=y.sum()/total, xmin=mn, xmax=mx,
-                      color='r', linestyles='--')
-
-            gt.set_ylim(0, tmp['Yes'].max()*1.1)  # 设置y轴和title
-            gt.set_ylabel("Target %True(1)", fontsize=16)
-            sizes = []
-
-            for p in ax.patches:  # 标识每个值所占的比例。
-                height = p.get_height()
-                sizes.append(height)
-                ax.text(p.get_x()+p.get_width()/2.,
-                        height + 3,
-                        '{:1.2f}%'.format(height/total*100),
-                        ha="center", fontsize=12)
-            ax.set_ylim(0, max(sizes) * 1.15)
-        plt.subplots_adjust(hspace=0.5, wspace=.3)

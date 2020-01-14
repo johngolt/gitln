@@ -234,4 +234,3 @@ class CateBin:
     def cat2num(self, data, feature, target):
         catnum = data.groupby(feature)[target].mean().to_dict()
         return data[feature].replace(catnum)
-    def 
