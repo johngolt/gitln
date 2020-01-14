@@ -145,6 +145,13 @@ class TreeSplit(Split):
         return res, values
 
 
+class BestKS(TreeSplit):
+    def increase(self, data, feature, target):
+        temp = pd.crosstab(data[feature], data[target], normalize='columns')
+        temp = temp.cumsum()
+        return np.abs(temp.iloc[:,0]-temp.iloc[:,1]).max()
+
+
 class EntropySplit(TreeSplit):
     def _entropy(self, group):
         return -group*np.log2(group+1e-5)
@@ -221,3 +228,10 @@ class ChiMerge(Merge):
         demonitor = a.prod()*b.prod()
         nomitor = (arr[0, 0]*arr[1, 1]-arr[0, 1]*arr[1, 0])**2*arr.sum()
         return nomitor/demonitor
+
+
+class CateBin:
+    def cat2num(self, data, feature, target):
+        catnum = data.groupby(feature)[target].mean().to_dict()
+        return data[feature].replace(catnum)
+    def 
