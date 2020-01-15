@@ -1,3 +1,25 @@
+'''
+这一模块主要包括一些数据处理的基本方法，用于建模过程中的数据分析和处理。主要包括以下几部分。
+split_cat_num:将特征进行分类，分为数值特征，类别特征和数值特征中取值较少可能为类别特征的特征。 
+
+FeatureStatistics:主要对特征进行一些简单的信息统计和可视化，按照类别和数值特征两种来进行处理。
+
+PlotFunc:包含了一些绘图的基本处理，方便后续数据可视化。
+
+Categorical:主要针对类别特征的可视化，用于数据预处理阶段。
+
+Numerical:主要针对于数值特征的可视化，用于数据预处理阶段。
+
+Constant:针对于常值特征的处理和可视化。
+
+CalEnt:计算类别特征的条件信息熵，基尼系数和WOE,IV值
+
+Missing:针对于数据处理过程中的缺失值处理，包含了常用的一些缺失值处理方法。
+
+FeatureStability:用于检验训练集和测试集中特征的稳定性，可以作为特征选择的一部分，也可以用于查看
+特征在不同类别之间的分布情况。
+'''
+
 import pandas as pd
 import numpy as np
 import seaborn as sns
@@ -30,7 +52,8 @@ class FeatureStatistics:
         categorical = data.select_dtypes(include='object')
         return numerical, categorical
 
-    def describe(self, data):  # 得到数值和类别特征的一些统计特征
+    def describe(self, data):
+        '''得到数值和类别特征的一些统计特征'''
         numerical, categorical = self.split(data)
         if not numerical.empty:
             _ = self.describe_num(numerical)
@@ -128,7 +151,7 @@ class PlotFunc:
 
     def get_ax(self, ax=None):
         if ax is None:
-            fig = plt.figure(figsize=(6,5))
+            fig = plt.figure(figsize=(8,5))
             ax = fig.add_subplot()
             return ax
         return ax
@@ -146,7 +169,7 @@ class PlotFunc:
                         fontdict={'horizontalalignment': 'right', 'size': 12})
 
         for row in data.itertuples():
-            ax.text(row.Index, row.b*1.01, s=round(row.b, 1), 
+            ax.text(row.Index, row.b*1.01, s=round(row.b, 2), 
             horizontalalignment='center', verticalalignment='bottom', fontsize=14)
         return ax
 
@@ -359,12 +382,11 @@ class Constant(PlotFunc):
 
     def most_frequent(self, data):
         '''计算每个特征中出现频率最高的项所占的比例和对应的值'''
-        records_count = data.shape[0]
         col_most_values, col_large_value = {}, {}
 
         for col in data.columns:
-            value_counts = data[col].value_counts()
-            col_most_values[col] = value_counts.max()/records_count
+            value_counts = data[col].value_counts(normalize=True)
+            col_most_values[col] = value_counts.max()
             col_large_value[col] = value_counts.idxmax()
 
         most_values_df = pd.DataFrame.from_dict(col_most_values, orient='index')  # 字典的key为index
@@ -374,9 +396,6 @@ class Constant(PlotFunc):
 
     def plot_frequency(self, data, N=30):
         '''将样本中有缺失的特征的缺失率按从大到小绘制出来'''
-        plt.rcParams['font.family'] = ['sans-serif']
-        plt.rcParams['font.sans-serif'] = ['SimHei']  # 可以显示中文
-        plt.rcParams['axes.unicode_minus'] = False  # 可以显示负号
         _, ax = plt.subplots(figsize=(8, 6))
         ax.set_ylabel('Frequency Rate')
         ser, _ = self.most_frequent(data)
@@ -394,46 +413,43 @@ class Constant(PlotFunc):
                 col_large = result[each].value_counts().idxmax()
                 col_larges[each] = col_large
                 result[each+'_bins'] = (result[each] == col_large).astype(int)
-                return result, col_larges
+            return result, col_larges
         else:
             for each in features:
                 result[each+'_bins'] = (result[each] == col_large[each]).astype(int)
             return result
+    
+    def find_columns(self, data, threshold=None):
+        if threshold is None:
+            threshold = self.deletes
+        col_most, _ = self.most_frequent(data)
+        large_percent_cols = list(
+            col_most[col_most['max percent'] >= threshold].index)
+        return large_percent_cols
 
     def delete_frequency(self, data, threshold=None):
         '''特征中某个值出现的概率很高的特征进行删除。 '''
-        if threshold is None:
-            threshold = self.deletes
+        large_percent_cols = self.find_columns(data, threshold)
         result = data.copy()
-        col_most, _ = self.most_frequent(result)
-        large_percent_cols = list(
-            col_most[col_most['max percent'] >= threshold].index)
-
         result = result.drop(large_percent_cols, axis=1)
         return result, large_percent_cols
 
-    def fit(self, X, y=None):
-        col_most, col_large_value = self.most_frequent(X)
-        large_percent_cols = list(
-            col_most[col_most['max percent'] >= self.deletes].index)
-
+    def fit(self, X, y=None, threshold=None):
+        large_percent_cols = self.find_columns(X, threshold)
         self.large_percent_ = large_percent_cols
-        self.col_large_ = col_large_value
         return self
 
     def transform(self, X):
         result = X.copy()
+        assert hasattr(self, 'large_percent_')
         result = result.drop(self.large_percent_, axis=1)
         return result
 
-    def fit_transform(self, X, y=None):
+    def fit_transform(self, X, y=None, threshold=None):
         result = X.copy()
-        col_most, col_large_value = self.most_frequent(X)
-        large_percent_cols = list(
-            col_most[col_most['max percent'] >= self.deletes].index)
+        large_percent_cols = self.find_columns(X, threshold)
 
         self.large_percent_ = large_percent_cols
-        self.col_large_ = col_large_value
         result = result.drop(large_percent_cols, axis=1)
         return result
 
@@ -441,10 +457,10 @@ class Constant(PlotFunc):
 class CalEnt:
     '''比较某字段在类别合并前后的信息熵、基尼值、信息值IV，若合并后信息熵值减小/基尼值减小/信息值IV增大，
     则确认合并类别有助于提高此字段的分类能力，可以考虑合并类别。'''
-    def _entropy(self, group):
+    def _entropy(self, group): # 计算信息熵
         return -group*np.log2(group+1e-5)
 
-    def _gini(self, group):
+    def _gini(self, group):  # 计算基尼系数
         return group*(1-group)
 
     def cal(self, data, feature, target, func=None):
@@ -453,36 +469,53 @@ class CalEnt:
         temp = pd.crosstab(data[feature], data[target], normalize='index')
         enti = func(temp)
         return (temp1*enti.sum(axis=1)).sum()
-         
-    def entropy(self, data, feature, target):
-        # 熵值Ent(D)越小，表示变量的分类能力越强，即预测能力越强。
-        if isinstance(feature, str):
-            return self.cal(data, feature, target, self._entropy)
-        elif isinstance(feature, Iterable):
-            return [self.cal(data, each, target, self._entropy) for each in feature]
+    
+    def calculates(self, data, features, target, func):
+        '''通用函数，用来处理多个特征的计算'''
+        if isinstance(features, str):
+            return func(data, features, target)
+        elif isinstance(features, Iterable):
+            data = [func(data, feature, target) for feature in features]
+            result = pd.Series(data, index=features)
+            return result
         else:
-            raise TypeError('Feature is not right data type')
-
-    def gini(self, data, feature, target):
-        # 基尼值越小，说明数据集的纯度越高，即变量的预测力越强。
-        if isinstance(feature, str):
-            return self.cal(data, feature, target, self._gini)
-        elif isinstance(feature, Iterable):
-            return [self.cal(data, each, target, self._gini) for each in feature]
-        else:
-            raise TypeError('Feature is not right data type')
-
-    def woe_iv(self, data, feature, target):  # 计算WOE, IV值
+            raise TypeError('Features is not right!')
+    
+    def entropy(self, data, feature, target):  # 计算条件信息熵
+        return self.cal(data, feature, target, self._entropy)
+    
+    def entropys(self, data, features, target):
+        '''计算条件信息熵的接口，通过条件信息熵可以评价特征的重要程度。'''
+        return self.calculates(data, features, target, self.entropy)
+    
+    def gini(self, data, feature, target):  # 计算条件基尼系数
+        return self.cal(data, feature, target, self._gini)
+    
+    def ginis(self, data, features, target):
+        '''计算条件信息系数的接口，通过条件信息系数可以评价特征的重要程度。'''
+        return self.calculates(data, features, target, self.entropy)
+    
+    def woe(self, data, feature, target):
+        '''计算woe值,可以用于类别特征的编码'''
         temp = pd.crosstab(data[feature], data[target], normalize='columns')
         woei = np.log((temp.iloc[:, 0]+1e-5)/(temp.iloc[:, 1]+1e-5))
-        iv = (temp.iloc[:, 0] - temp.iloc[:, 1])*woei
-        return iv.sum(), woei.to_dict()
+        return woei
 
-    def woe_ivs(self, data, features, target):
+    def iv(self, data, feature, target):
+        '''计算IV值，通过IV值可以进行特征选择，一般要求IV值大于0.02'''
+        temp = pd.crosstab(data[feature], data[target], normalize='columns')
+        woei = self.woe(data, feature, target)
+        iv = (temp.iloc[:, 0] - temp.iloc[:, 1])*woei
+        return iv.sum()
+    
+    def ivs(self, data, features, target):
+        return self.calculates(data, features, target, self.iv)
+        
+    def woes(self, data, features, target):
         if isinstance(features, str):
-            return self.woe_iv(data, features, target)
+            return self.woe(data, features, target)
         elif isinstance(features, Iterable):
-            return{each: self.woe_iv(data, each, target) for each in features}
+            return{each: self.woe(data, each, target) for each in features}
         else:
             raise TypeError('Feature is not right data type')
 
@@ -526,11 +559,11 @@ class Missing(PlotFunc):
         x = range(data.shape[0])
         plt.scatter(x, ser.values, c='black')
 
-    def find_index(self, data, threshold=None):
+    def find_index(self, data, threshold):
         '''找到满足条件的特征'''
         length = data.shape[0]
         _, null_sum, _ = self.is_null(data)
-        ratio = null_sum()/length
+        ratio = null_sum/length
         index = ratio[ratio >= threshold].index
         return index
 
@@ -544,7 +577,7 @@ class Missing(PlotFunc):
         result = result.drop(index, axis=1)
         return index, result
 
-    def delete_items(self, data, value=None):
+    def delete_items(self, data, value):
         '''删除包含缺失值较多的样本，value为删除的阈值，如果样本的缺失值个数大于value
         则将其视为异常值删除。'''
         result = data.copy()
@@ -568,20 +601,20 @@ class Missing(PlotFunc):
     def another_class(self, data, features, fill_value=None):
         '''对于特征而言，可以将缺失值另作一类'''
         result = data.loc[:, features].copy()
-        if fill_value is None
+        if fill_value is None:
             fill_value = {}
             for each in features:
                 if data[each].dtype == 'object':
                     fill_value[each] = 'None'
                 else:
                     fill_value[each] = int(data[each].max()+1)
-        result.fillna(fill_value)
+        result = result.fillna(fill_value)
         return fill_value, result
 
     def bin_and_fill(self, data, features, fill_value=None):
         '''对于一些数值特征，我们可以使用中位数填补，但是为了不丢失缺失信息，同时可以进行编码。'''
         result = data.loc[:, features].copy()
-        if full_value is None:
+        if fill_value is None:
             fill_value = result[features].median().to_dict()
         for each in features:
             result['is_null_'+each] = pd.isnull(data[each]).astype(int)
@@ -589,7 +622,8 @@ class Missing(PlotFunc):
         return fill_value, result
 
     def fill_null(self, data, features, fill_value=None):
-        '''对于缺失率很小的数值特征，使用中位数填补缺失值'''
+        '''对于缺失率很小的数值特征，使用中位数填补缺失值,可以自定义填充，
+        默认采用中位数填充。'''
         result = data.loc[:, features].copy()
         if fill_value is None:
             fill_value = result.median().to_dict()
@@ -630,7 +664,9 @@ class FeatureStability:
 
     def num_stab_test(self, train, test, feature=None):
         '''Compute the Kolmogorov-Smirnov statistic on 2 samples.
-        检验数值特征在训练集和测试集分布是否一致,ks检验'''
+        检验数值特征在训练集和测试集分布是否一致,ks检验，null hypothesis是两个样本取自
+        同一分布，当pvalue小于设定阈值，则拒绝原假设，则训练集和测试集的特征样本不是取自同一
+        分布。可以考虑是否去除这个特征。'''
         if feature is None:
             _, pvalue = stats.ks_2samp(train, test)
         else:
@@ -659,7 +695,8 @@ class FeatureStability:
         return count, count1
     
     def psi(self, train, test, feature=None): # Population Stability Index
-        '''PSI大于0.1则视为不太稳定。'''
+        '''PSI大于0.1则视为不太稳定。越小越稳定,通过PSI来评估特征在训练集和测试集上
+        分布的稳定性。'''
         count, count1 = self.get_value_count(train, test, feature)
         res = (count1 - count)*np.log(count1/count)
         return res.sum()
@@ -670,8 +707,10 @@ class FeatureStability:
         return res
     
     def cat_stab_test(self, train, test, feature=None):
-        '''检验类别特征在训练集和测试集分布是否一致。chi2检验'''
-        count, count1 = self.get_value_count(train, test, feature,normalize=False)
+        '''检验类别特征在训练集和测试集分布是否一致。chi2检验，null hypothesis为分布相互
+        对立，所以pvalue小于设定值拒绝原假设，即特征的分布与训练集和测试集有关，即
+        特征分布在训练集和测试集不是一致的。'''
+        count, count1 = self.get_value_count(train, test, feature, normalize=False)
         data = pd.concat([count,count1],axis=1)
         _, pvalue,*_ = stats.chi2_contingency(data.to_numpy().T, correction=False)
         return pvalue
@@ -692,6 +731,7 @@ class FeatureStability:
             raise ValueError('labels is wrong!')
     
     def plot_train_test_num(self, train, test, features, labels=None):
+        '''可视化数值特征在训练集和测试集上的分布。'''
         label1, label2 = self.get_labels(labels)
         if isinstance(features, str):
             fig = plt.figure(figsize=(8,6))
@@ -701,7 +741,7 @@ class FeatureStability:
             sns.distplot(train[features], color="green", kde=True, bins=50, label=label1, ax=ax)
             sns.distplot(test[features], color="blue", kde=True, bins=50, label=label2, ax=ax)
             plt.legend(loc=2)
-        elif isinstance(features, list):
+        elif isinstance(features, Iterable):
             nrows = len(features)//4+1
             fig = plt.figure(figsize=(20, 5*nrows))
             fig.suptitle('Distribution of values in {} and {}'.format(label1, label2), 
@@ -723,11 +763,12 @@ class FeatureStability:
         res1 = test[feature].value_counts(normalize=True)
         data = pd.concat([res,res1], axis=1).fillna(0)
         data.columns = labels
-        data = data.reset_index()
+        data = data.reset_index()  # index变为column后的name默认为index
         melt = pd.melt(data, id_vars='index')
         return melt
 
     def plot_train_test_cat(self, train, test, features, labels=None):
+        '''可视化类别特征在训练集和测试集上的分布。'''
         label1, label2 = self.get_labels(labels)
         if isinstance(features, str):
             fig = plt.figure(figsize=(8,6))
@@ -737,7 +778,7 @@ class FeatureStability:
             melt = self.get_melt(train, test, features, [label1, label2])
             sns.barplot(x='index',y='value', data=melt, hue='variable', ax=ax)
             plt.legend(loc=2)
-        elif isinstance(features, list):
+        elif isinstance(features, Iterable):
             nrows = len(features)//4 + 1
             fig = plt.figure(figsize=(20, 5*nrows))
             fig.suptitle('Distribution of values in {} and {}'.format(label1, label2), 
@@ -751,3 +792,21 @@ class FeatureStability:
                 plt.legend(loc=2)
         else:
             raise TypeError('{} is not right datatype'.format(type(features)))
+    
+    def target_split_data(self, data, target):
+        '''根据目标特征对训练集进行划分。'''
+        mask = data[target] == 0
+        train = data.loc[mask, :]
+        test = data.loc[~mask, :]
+        labels = ['Target=0', 'Target=1']
+        return train, test, labels
+    
+    def plot_target_feature_cat(self, data, features, target):
+        '''可视化类别特征在目标变量上的分布。'''
+        train, test, labels = self.target_split_data(data, target)
+        self.plot_train_test_cat(train, test, features, labels)
+    
+    def plot_target_feature_num(self, data, features, target):
+        '''可视化数值特征在目标变量上的分布。'''
+        train, test, labels = self.target_split_data(data, target)
+        self.plot_train_test_num(train, test, features, labels)

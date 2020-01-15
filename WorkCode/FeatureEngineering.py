@@ -1,21 +1,48 @@
+'''
+这个模块主要包括一些计算相关系数，和进行特征选择的类。
+Relation: 为计算相关系数的抽象基类，所有计算相关系数的类别都将继承这个类，子类必须实现
+ftrelation和ffrelation两个方法，分别计算特征与目标之间的相关系数和特征之间的相关系数。
+同时也包含可视化特征系数的函数。
+
+Pearson:基于Relation实现的pearson相关系数
+MICRelation:基于Relation实现的最大互信息数
+DistRelation:基于Relation实现的距离相关系数
+
+FSelect:进行特征选择的抽象基类，所有进行特征选择的类都将继承自这个类，所有子类必须实现
+filtermask这个函数，此函数产生特征掩码，来进行特征选择。
+
+FilterSelect：基于FSelect实现的过滤式特征选择方法，同样也是一个抽象基类，所有的过滤式特征
+选择的类都将继承自此类，子类必须实现get_importance这个函数，此函数用于评价特征的重要程度，是
+进行过滤式特征选择的基础。
+CoreSelect：一个基kendall相关系数的过滤式特征选择方法。
+
+WrapperSelect：基于FSelect实现的包裹式特征选择方法。所有基于包裹式的特征选择方法都必须为它的子类，
+所有子类必须实现choose函数，这个函数是包裹式特征选择如何选出最优的特征子集的实现函数，返回结果可以是
+所有特征的一个子集，也可以是掩码。
+FeatureImportanceSelect：基于后向选择的包裹式特征选择方法，不断从特征集中剔除掉不重要的特征。
+
+'''
+
+
+import minepy
 import pandas as pd
 import numpy as np
 import scipy.stats as stats
-import minepy
 import seaborn as sns
+from sklearn import clone
+from DataPreProcess import PlotFunc
+import matplotlib.pyplot as plt
+from abc import abstractmethod
 from sklearn.model_selection import StratifiedKFold, KFold
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import roc_curve, auc
-import matplotlib.pyplot as plt
 from scipy.spatial.distance import pdist, squareform
 from sklearn.feature_selection import RFECV, GenericUnivariateSelect
 from sklearn.ensemble import RandomForestClassifier
-from abc import abstractmethod
-from sklearn import clone
 
 
-class Relation:
+class Relation(PlotFunc):
     '''计算相关系数的抽象基类。'''
     def pd2array(self, X):
         '''将DataFrame转化为ndarray，同时记录下columns和columns长度。'''
@@ -24,15 +51,15 @@ class Relation:
         return arr, columns, X.shape[1]
 
     def computeft(self, X, y, func):
-        '''计算特征变量和目标变量之间的相关系数。'''
+        '''计算特征变量和目标变量之间的相关系数。比较常用，所以实现了'''
         arr, columns, n = self.pd2array(X)
         yarr = y.to_numpy()
-        data = np.array(func(arr[:,j], yarr)[0] for j in range(n))
+        data = np.fromiter((func(arr[:,j], yarr)[0] for j in range(n)), dtype=np.float32)
         result = pd.Series(data, index=columns)
         return result
 
     def computeff(self, X, func):
-        '''计算特征变量与特征变量之间的相关系数。'''
+        '''计算特征变量与特征变量之间的相关系数。比较常用所以实现。'''
         arr, columns, n = self.pd2array(X)
         try:
             result, _ = func(X)
@@ -58,22 +85,8 @@ class Relation:
 
     def plot_ft(self, data):
         '''可视化特征变量和目标变量之间的相关系数，也可以用来可视化Series序列。'''
-        _, ax = plt.subplots(figsize=(8,5))
         data=data.sort_values().reset_index()  # 特征与label之间的相关性的可视化。
-        data.columns=['a','b']
-        ax.vlines(x=data.index, ymin=0, ymax=data['b'], 
-                    color='firebrick', alpha=0.7, linewidth=2)
-        ax.scatter(x=data.index, y=data['b'], s=75, 
-                    color='firebrick', alpha=0.7)
-        ax.set_title('Correlogram', fontdict={'size':22})
-        ax.set_xticks(data.index)
-        mn,mx = ax.get_xbound()
-        ax.hlines(y=0,xmin=mn,xmax=mx,linestyles='--')
-        ax.set_xticklabels(data['a'].str.title(), rotation=60, 
-                          fontdict={'horizontalalignment': 'right', 'size':12})
-        for row in data.itertuples():
-            ax.text(row.Index, row.b*1.01, s=round(row.b, 2),
-                    horizontalalignment= 'center', verticalalignment='bottom', fontsize=14)
+        self.plot_bin(data)
 
     def plot_ff(self, data):
         '''用热力图来可视化特征变量与特征变量之间的相关系数。也可以用来绘制其他的热力图。'''
@@ -97,6 +110,7 @@ class Pearson(Relation):  # 皮尔逊相关系数。
     def ffrelation(self, X):
         return self.computeff(X, func=stats.pearsonr)
 
+
 class MICRelation(Relation):  # 最大信息系数。
     def ftrelation(self, X, y):
         arr, columns, _ = self.pd2array(X)
@@ -112,6 +126,7 @@ class MICRelation(Relation):  # 最大信息系数。
         mic = squareform(minepy.pstats(arr)[0])+np.identity(n)
         result = pd.DataFrame(mic, columns=columns, index=columns)
         return result
+
 
 class DistRelation(Relation):  # 距离相关系数。
 
@@ -132,6 +147,7 @@ class DistRelation(Relation):  # 距离相关系数。
 
     def ffrelation(self, X):
         return self.computeff(X, func=self._distcorr)
+
 
 
 class FSelection:
@@ -172,7 +188,7 @@ class FilterSelect(FSelection):
         pass
 
     def get_importances(self, X, y=None, isabs=True):
-        '''得到特征的重要性。'''
+        '''得到特征的重要性。isabs确定是否是值的绝对值大小与特征重要程度有关，符号无关。'''
         features = X.columns
         scores = [self.get_importance(X, feature, y) for feature in features]
         if isabs:
@@ -196,6 +212,7 @@ class FilterSelect(FSelection):
         return mask 
     
     def plot_importances(self, X, y=None, ascending=False, to_select=None, isabs=True):
+        '''可视化特征的重要程度，被选中的特征为红色， 没有被选择的特征为蓝色。'''
         mask = self.filtermask(X, y, ascending, to_select, isabs)
 
         scores = self.get_importances(X, y, isabs)
@@ -273,7 +290,7 @@ class WrapperSelect(FSelection):
         result = self.choose(X, y)
         if (set(result) == {0, 1}) and len(result) == X.shape[1]:
             return result
-        elif set(result) <= set(X.columns):
+        elif set(result) <= set(X.columns): #子集
             mask = np.zeros(X.shape[1])
             index = [i for i, feature in enumerate(X.columns) if feature in result]
             mask[index] = 1
@@ -282,7 +299,7 @@ class WrapperSelect(FSelection):
             raise ValueError('子类实现的方法返回值不满足:[0,1]序列或特征的子集的条件。')
 
 
-class ImportanceSelect(WrapperSelect):
+class FeatureImportanceSelect(WrapperSelect):
     def get_thres(self, X, y):
         '''得到不同特征的重要程度和最小值。'''
         est = clone(self.clf)

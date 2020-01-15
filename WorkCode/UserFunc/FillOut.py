@@ -1,3 +1,24 @@
+'''
+这个模块包括缺失值填充，异常值截断，类别特征编码。
+ReadData:包含数据保存，出于后续快速读取的需要保存为pkl.利用pandas_profiling查看数据情况。建立基线模型；
+特征变换：box-cox；数据类型转换减少内存消耗。
+
+DistFill:使用分布来对缺失值进行填充，为一个抽象基类。所有的填充方法继承自这个类，必须实现fillmethod
+函数，这个函数返回一个可以产生填充值的函数。
+CateFill:填充类别特征的的缺失值填充类
+IntRange:对于只能取整数的特征采用Uniform填充
+UniformFill:对缺失值采用Uniform填充
+GaussianFill:对缺失值采用Gaussian分布填充。
+
+OutlierPro:处理异常值的抽象基类，所有处理异常值的类都是它的子类，所有子类必须实现get_threshold函数。
+此函数得到截断的最大和最小值。
+BoxTruc：基于箱型图来进行截断，75%+IR,23-IR
+PercentTruc:基于OutlierPro实现的异常值截断的类，最大和最小值为99%和1%
+
+Encode:类别特征进行编码的抽象基类，所有子类必须实现_encode函数，此函数返回一个映射或者其他。
+
+'''
+
 
 import pandas as pd
 import os

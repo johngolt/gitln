@@ -11,9 +11,6 @@ class Outlier:
     def ploting_cat_fet(self, df, cols, y):
         '''绘制类别特征，柱状图为每个值在特征中出现的数目及所占的比例，折线图为每个取值
         情况下，其中的坏样本率。'''
-        plt.rcParams['font.family'] = ['sans-serif']
-        plt.rcParams['font.sans-serif'] = ['SimHei']  # 可以显示中文
-        plt.rcParams['axes.unicode_minus'] = False  # 可以显示负号
         total = len(df)
         # 图形的参数设置
         nrows, ncols = len(cols)//2+1, 2
