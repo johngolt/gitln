@@ -153,7 +153,7 @@ class Sequence(metaclass=ABCMeta):
         pass
 
     def __contains__(self, item):
-        for j in range(len(self)):s
+        for j in range(len(self)):
             if self[j] == item:
                 return True
         return False

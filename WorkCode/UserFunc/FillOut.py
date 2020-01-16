@@ -5,6 +5,8 @@ ReadData:包含数据保存，出于后续快速读取的需要保存为pkl.利�
 
 DistFill:使用分布来对缺失值进行填充，为一个抽象基类。所有的填充方法继承自这个类，必须实现fillmethod
 函数，这个函数返回一个可以产生填充值的函数。
+DistFillNum:所有对int和float类型的缺失值填充都继承自这个类
+DistFillCat:所有对object类型的缺失值填充都继承自这个类
 CateFill:填充类别特征的的缺失值填充类
 IntRange:对于只能取整数的特征采用Uniform填充
 UniformFill:对缺失值采用Uniform填充
@@ -12,11 +14,14 @@ GaussianFill:对缺失值采用Gaussian分布填充。
 
 OutlierPro:处理异常值的抽象基类，所有处理异常值的类都是它的子类，所有子类必须实现get_threshold函数。
 此函数得到截断的最大和最小值。
-BoxTruc：基于箱型图来进行截断，75%+IR,23-IR
+BoxTruc：基于箱型图来进行截断，75%+IR,25%-IR
 PercentTruc:基于OutlierPro实现的异常值截断的类，最大和最小值为99%和1%
 
 Encode:类别特征进行编码的抽象基类，所有子类必须实现_encode函数，此函数返回一个映射或者其他。
-
+OneHot: one-hot编码
+CountEncode：计数编码
+LabelCountEncode:计数排序编码
+TargetEncode:目标编码
 '''
 
 
@@ -33,6 +38,7 @@ from abc import abstractmethod
 from functools import partial
 import re
 from sklearn.preprocessing import OneHotEncoder
+
 
 class ReadData:
 
@@ -74,9 +80,9 @@ class ReadData:
         profile.to_file(output_file=name)
     
     def get_X_y(self, data, target=None):  # 特征和label分离
-        y = data[target]
-        X = data.pop(target)
-        return X, y
+        data = data.copy()
+        y = data.pop(target)
+        return data, y
     
     def baseln(self, X, y, scoring='roc_auc', cv=5):
         '''生成基线模型，作为后续数据处理和特征工程的对照。'''
@@ -125,7 +131,7 @@ class ReadData:
 
 
 class DistFill:
-    
+    '''对缺失值采用分布填充，缺失值填充的抽象基类。'''
     def __init__(self):
         self.mapping_={}
 
@@ -140,58 +146,27 @@ class DistFill:
             if total < 0.001:
                 return np.int32, mask
         return np.float32, mask
-
-    def get_info(self, ser, robust=False):
-        '''得到序列的均值、方差或者中位数和四分位差。'''
-        if robust:
-            median = np.median(ser)
-            std = np.percentile(ser,75)-np.percentile(ser,25)
-            return median, std
-        mean, std = ser.mean(), ser.std()
-        return mean, std
     
     @abstractmethod
-    def fillmethod(self, ser, robust):
+    def fillmethod(self, ser, **kwargs):
         '''缺失值填补的具体方法，每一个子类实现这个方法。此方法从已有的样本
         产生生成缺失值的方法。'''
         pass
 
-    def fill(self, data, feature, robust=False):
+    def fill(self, data, feature, **kwargs):
         ser = data[feature].copy()
         dtype, mask = self.float2int(ser)
         temp = ser[mask]
-        fillfunc = self.fillmethod(temp, robust)
+        fillfunc = self.fillmethod(temp, **kwargs)
         self.mapping_[feature] = fillfunc
         ser[~mask] = fillfunc(size=len(ser[~mask]))
         ser = ser.astype(dtype)
         return ser
-    
-    def plot_fill_num(self, data, feature, robust=False):
-        '''可视化填充的缺失值分布和样本未确实的值的分布。'''
-        _, mask = self.float2int(data[feature])
-        ser = self.fill(data, feature, robust)
-        fillv, origin = ser[~mask], ser[mask]
-        fig = plt.figure(figsize=(8,6))
-        ax = fig.add_subplot()
-        sns.distplot(fillv,bins=50,color='r',label='Fill', ax=ax)
-        sns.distplot(origin,bins=50, color='g', label='Origin', ax=ax)
-        plt.legend()
-        
-    def plot_fill_cat(self, data, feature, robust=False):
-        _, mask = self.float2int(data[feature])
-        ser = self.fill(data, feature, robust)
-        fillv = ser[~mask].value_counts(normalize=True) 
-        origin = ser[mask].value_counts(normalize=True)
-        df = pd.concat([origin, fillv],axis=1,keys=['Origin','Fill'],sort=True)
-        df = df.fillna(0)
-        fig = plt.figure(figsize=(8,6))
-        ax = fig.add_subplot()
-        df.plot(kind='bar',ax=ax)
 
-    def fills(self, data, features, robust=False):
+    def fills(self, data, features, **kwargs):
         res= []
         for feature in features:
-            ser = self.fill(data, feature, robust)
+            ser = self.fill(data, feature, **kwargs)
             res.append(ser)
         return pd.concat(res, axis=1)
     
@@ -206,22 +181,62 @@ class DistFill:
         return pd.concat(res, axis=1)
 
 
-class CateFill(DistFill):
-    def fillmethod(self, ser, robutst):
+class DistFillNum(DistFill):
+    '''填充数值特征的父类，用于填充非obejct类型'''
+    def get_info(self, ser, robust=False):
+        '''得到序列的均值、方差或者中位数和四分位差。'''
+        if robust:
+            median = np.median(ser)
+            std = np.percentile(ser,75)-np.percentile(ser,25)
+            return median, std
+        mean, std = ser.mean(), ser.std()
+        return mean, std
+    
+    def plot_fill_num(self, data, feature, **kwargs):
+        '''可视化填充的缺失值分布和样本未确实的值的分布。'''
+        _, mask = self.float2int(data[feature])
+        ser = self.fill(data, feature, **kwargs)
+        fillv, origin = ser[~mask], ser[mask]
+        fig = plt.figure(figsize=(8,6))
+        ax = fig.add_subplot()
+        sns.distplot(fillv,bins=50,color='r',label='Fill', ax=ax)
+        sns.distplot(origin,bins=50, color='g', label='Origin', ax=ax)
+        plt.legend()
+
+
+class DistFillCat(DistFill):
+    '''类别特征的父类，用于填充object类型。'''
+    def plot_fill_cat(self, data, feature, **kwags):
+        _, mask = self.float2int(data[feature])
+        ser = self.fill(data, feature, **kwags)
+        fillv = ser[~mask].value_counts(normalize=True) 
+        origin = ser[mask].value_counts(normalize=True)
+        df = pd.concat([origin, fillv],axis=1,keys=['Origin','Fill'],sort=True)
+        df = df.fillna(0)
+        fig = plt.figure(figsize=(8,6))
+        ax = fig.add_subplot()
+        df.plot(kind='bar',ax=ax)
+
+
+class CateFill(DistFillCat):
+    def fillmethod(self, ser):
         per = ser.value_counts(normalize=True)
         return partial(np.random.choice, a=ser.unique(), p=per)
 
-class IntRange(DistFill):
-    def fillmethod(self, ser, robust):  
+
+class IntRange(DistFillNum):
+    def fillmethod(self, ser, robust=False):  
         mean, std = self.get_info(ser, robust)
         return partial(np.random.randint, low=mean-std, high=mean+std)
 
-class UniformFill(DistFill):
-    def fillmethod(self, ser, robust):
+
+class UniformFill(DistFillNum):
+    def fillmethod(self, ser, robust=False):
         mean, std = self.get_info(ser, robust)
         return partial(np.random.uniform, low=mean-std, high=mean+std)
 
-class GaussianFill(DistFill):
+
+class GaussianFill(DistFillNum):
     def bcinvert(self, loc=0, scale=1, lamba=1, size=1):
         y = np.random.normal(loc, scale, size)
         data = np.exp(np.log1p(lamba*y)/lamba)  # box-cox逆变换
@@ -282,18 +297,31 @@ class OutlierPro:
             result.append(series)
         return pd.concat(result, axis=1)
 
+
 class BoxTruc(OutlierPro):  # 具体的异常值处理的类
     def get_threshold(self, series):
         low = series.quantile(0.25)
         high = series.quantile(0.75)
         ir = (high-low) * 1.5
         return low-ir, high+ir
-         
+
+
 class PercentTruc(OutlierPro):
     def get_threshold(self, series):
         low = series.quantile(0.01)
         high = series.quantile(0.99)
         return low, high
+
+
+class MixBoxPerTruc(OutlierPro):
+    def get_threshold(self, series):
+        low = series.quantile(0.25)
+        high = series.quantile(0.75)
+        ir = (high-low) * 1.5
+        low, high = low-ir, high+ir
+        low1 = series.quantile(0.01)
+        high1 = series.quantile(0.99)
+        return min(low, low1), max(high, high1)
 
 
 class Encode:
@@ -321,6 +349,8 @@ class Encode:
     
     def encode(self, data, feature, y=None, **kwargs):
         '''实现特征编码的函数。'''
+        data = data.copy()
+        data[feature] = self.fillcat(data[feature])
         enc = self._encode(data, feature, y, **kwargs)
         result = self.process(data, feature, enc)
         return result
@@ -330,15 +360,18 @@ class Encode:
         features = X.columns
         result = X.copy()
         for feature in features:
+            result[feature] = self.fillcat(result[feature])
             self.mapping_[feature] = self._encode(result, feature, y, **kwargs)
         return self
 
     def transform(self, X):
         features = X.columns
-        result =[]
+        result = X.copy()
+        res =[]
         for feature in features:
-            result.append(self.process(result, feature, self.mapping_[feature]))
-        res = pd.concat(result, axis=1)
+            result[feature] = self.fillcat(result[feature])
+            res.append(self.process(result, feature, self.mapping_[feature]))
+        res = pd.concat(res, axis=1)
         return res
 
     def fit_transform(self, X, y=None, **kwargs):

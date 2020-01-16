@@ -1,4 +1,3 @@
-from firstSpider import DataOutput, HtmlDownloader, HtmlParser, UrlManager
 class UrlManager:
     def __init__(self):
         self.new_urls = set()
