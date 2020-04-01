@@ -14,7 +14,6 @@ WOESplit:基于WOE值的分箱方法。
 ChiMerge:基于卡方值的分箱方法。
 '''
 
-
 import pandas as pd
 import numpy as np
 from abc import abstractmethod
@@ -22,7 +21,6 @@ from functools import partial
 
 
 class Split:
-
     def __init__(self, bins=10):
         '''设定分箱数，默认为10，可以根据具体情况设定分箱数。'''
         self.bins = bins
@@ -53,7 +51,11 @@ class Split:
         ser = self.get_series(data, feature, target)
         bins = self.get_bins(bins)
 
-        res, points = self._split(ser, bins, feature=feature, target=target, **kwargs)
+        res, points = self._split(ser,
+                                  bins,
+                                  feature=feature,
+                                  target=target,
+                                  **kwargs)
 
         points[0], points[-1] = -np.inf, np.inf
         mapping = {key: value for value, key in enumerate(res.cat.categories)}
@@ -66,13 +68,14 @@ class Split:
         self.mappings = {}
         features = X.columns
         target = y.name
-        data = pd.concat([X,y],axis=1)
+        data = pd.concat([X, y], axis=1)
         for feature in features:
-            _, points, mapping = self.split(data, feature, target, bins, **kwargs)
+            _, points, mapping = self.split(data, feature, target, bins,
+                                            **kwargs)
             self.splitpoints[feature] = points
             self.mappings[feature] = mapping
         return self
-    
+
     def transform(self, X):
         result = []
         features = X.columns
@@ -88,19 +91,21 @@ class Split:
         self.splitpoints = {}
         self.mappings = {}
         if isinstance(features, str):
-            res, points, mapping = self.split(data, features, target, bins, **kwargs)
+            res, points, mapping = self.split(data, features, target, bins,
+                                              **kwargs)
             self.splitpoints[features] = points
             self.mappings[features] = mapping
             return res
         result = []
         for feature in features:
-            res, points, mapping = self.split(data, feature, target, bins, **kwargs)
+            res, points, mapping = self.split(data, feature, target, bins,
+                                              **kwargs)
             self.splitpoints[feature] = points
             self.mappings[features] = mapping
             result.append(res)
         result = pd.concat(result, axis=1)
         return result
-        
+
 
 class LengthSplit(Split):
     def _split(self, ser, bins, feature=None, target=None):
@@ -116,7 +121,7 @@ class FreqSplit(Split):
 
 class TreeSplit(Split):
     '''基于树的分箱方法，包括了基尼系数和信息熵。'''
-    
+
     def __init__(self, thres=0.001, bins=10):
         self.thres = thres
         super().__init__(bins=bins)
@@ -130,7 +135,7 @@ class TreeSplit(Split):
         temp1 = data[feature].value_counts(normalize=True)
         temp = pd.crosstab(data[feature], data[target], normalize='index')
         enti = self._entropy(temp)
-        return (temp1*enti.sum(axis=1)).sum()
+        return (temp1 * enti.sum(axis=1)).sum()
 
     def increase(self, data, feature, target):
         '''计算增益率。'''
@@ -148,11 +153,11 @@ class TreeSplit(Split):
         if len(values) == 1:  # 如果为一个值，无法分箱，返回。
             return pd.Series([values, 0], index=['value', 'increase'])
         values.sort()
-        values = (values[:-1]+values[1:])/2
+        values = (values[:-1] + values[1:]) / 2
         dic = {}
 
         for value in values:
-            mask = data[feature] < value # 修改了df的值，但并没有修改data中feature的值
+            mask = data[feature] < value  # 修改了df的值，但并没有修改data中feature的值
             df.loc[mask, feature] = 0
             df.loc[~mask, feature] = 1
             dic[value] = self.increase(df, feature, target)
@@ -167,10 +172,10 @@ class TreeSplit(Split):
         values = [-np.inf, np.inf]
         baseln = self.thres
 
-        while (len(values) <= self.bins+1) and (baseln >= self.thres):
+        while (len(values) <= self.bins + 1) and (baseln >= self.thres):
             values.sort()
 
-            df = data[[feature, target]].copy() 
+            df = data[[feature, target]].copy()
             grouper = pd.cut(df[feature], bins=values)
             func = partial(self.bestpoint, feature=feature, target=target)
             res = df.groupby(grouper).apply(func)
@@ -191,17 +196,17 @@ class BestKS(TreeSplit):
     def increase(self, data, feature, target):
         temp = pd.crosstab(data[feature], data[target], normalize='columns')
         temp = temp.cumsum()
-        return np.abs(temp.iloc[:,0]-temp.iloc[:,1]).max()
+        return np.abs(temp.iloc[:, 0] - temp.iloc[:, 1]).max()
 
 
 class EntropySplit(TreeSplit):
     def _entropy(self, group):
-        return -group*np.log2(group+1e-5)
+        return -group * np.log2(group + 1e-5)
 
 
 class GiniSplit(TreeSplit):
     def _entropy(self, group):
-        return group*(1-group)
+        return group * (1 - group)
 
 
 class Merge(Split):
@@ -226,21 +231,21 @@ class Merge(Split):
     def chergepoint(self, data, feature, target):
         values = data[feature].unique()
         values.sort()
-        values = (values[:-1] + values[1:])/2
+        values = (values[:-1] + values[1:]) / 2
         values = values.tolist()
-        values = [-np.inf] + values+[np.inf]
+        values = [-np.inf] + values + [np.inf]
         baseln = self.threshold
-        while (len(values) > self.bins+1) and (baseln <= self.threshold):
+        while (len(values) > self.bins + 1) and (baseln <= self.threshold):
             df = data[[feature, target]].copy()
             grouper = pd.cut(data[feature], bins=values)
-            group = df.groupby(grouper).groups #返回字典
+            group = df.groupby(grouper).groups  # 返回字典
             keys = list(group.keys())[1:]  # 分组的keys
-            dvalues = list(group.values())[:-1] # 每个分箱的index
+            dvalues = list(group.values())[:-1]  # 每个分箱的index
             remove = None
             for value, key, dvalue in zip(values[1:], keys, dvalues):
                 res = self.diff(df, dvalue, group[key], feature, target)
 
-                if res <= baseln: # 合并差异小于设定值的区间
+                if res <= baseln:  # 合并差异小于设定值的区间
                     baseln = max(self.threshold, res)
                     remove = value
                     values.remove(remove)
@@ -260,9 +265,10 @@ class WOESplit(Merge):
         '''计算相邻分箱之间的woe的差异。'''
         df = self.dfmerge(data, index1, index2, feature, target)
         temp = pd.crosstab(df[feature], df[target], normalize='columns')
-        if (0 not in temp.columns) or (1 not in temp.columns) or (0 in temp.to_numpy()):
+        if (0 not in temp.columns) or (1 not in temp.columns) or (
+                0 in temp.to_numpy()):
             return self.threshold
-        woe = np.log((temp.iloc[:, 0])/(temp.iloc[:, 1]))
+        woe = np.log((temp.iloc[:, 0]) / (temp.iloc[:, 1]))
         return woe[0] - woe[1]
 
 
@@ -270,14 +276,14 @@ class ChiMerge(Merge):
     def diff(self, data, index1, index2, feature, target):
         '''计算相邻分箱的卡方值'''
         df = self.dfmerge(data, index1, index2, feature, target)
-        temp = pd.crosstab(df[feature], df[target],normalize='index')
-        if (0 not in temp.columns) or (1 not in temp.columns) or (0 in temp.to_numpy()):
+        temp = pd.crosstab(df[feature], df[target], normalize='index')
+        if (0 not in temp.columns) or (1 not in temp.columns) or (
+                0 in temp.to_numpy()):
             return self.threshold
         arr = temp.to_numpy()
         a = arr.sum(axis=0)
         b = arr.sum(axis=1)
-        demonitor = a.prod()*b.prod()
-        nomitor = (arr[0, 0]*arr[1, 1]-arr[0, 1]*arr[1, 0])**2*arr.sum()
-        return nomitor/demonitor
-
-    
+        demonitor = a.prod() * b.prod()
+        nomitor = (arr[0, 0] * arr[1, 1] -
+                   arr[0, 1] * arr[1, 0])**2 * arr.sum()
+        return nomitor / demonitor

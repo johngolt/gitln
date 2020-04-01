@@ -104,7 +104,7 @@ class FeatureStatistics:
         越接近0代表分布越集中，越接近1代表分布越分散。'''
         self.cat, _ = self._describe_all(categorical)
         self.cat['熵'] = categorical.apply(lambda x: stats.entropy(
-            x.value_counts(normalize=True), base=2))/np.log2(self.cat['类别数'])  
+            x.value_counts(normalize=True), base=2))/np.log2(self.cat['类别数'])
         self.cat = self.cat.reset_index()
         return self.cat
 
@@ -151,7 +151,7 @@ class PlotFunc:
 
     def get_ax(self, ax=None):
         if ax is None:
-            fig = plt.figure(figsize=(8,5))
+            fig = plt.figure(figsize=(8, 5))
             ax = fig.add_subplot()
             return ax
         return ax
@@ -165,12 +165,20 @@ class PlotFunc:
                    s=75, color='firebrick', alpha=0.7)
 
         ax.set_xticks(data.index)
-        ax.set_xticklabels(data['a'], rotation=90,
-                        fontdict={'horizontalalignment': 'right', 'size': 12})
+        ax.set_xticklabels(data['a'],
+                           rotation=90,
+                           fontdict={
+                               'horizontalalignment': 'right',
+                               'size': 12
+                           })
 
         for row in data.itertuples():
-            ax.text(row.Index, row.b*1.01, s=round(row.b, 2), 
-            horizontalalignment='center', verticalalignment='bottom', fontsize=14)
+            ax.text(row.Index,
+                    row.b * 1.01,
+                    s=round(row.b, 2),
+                    horizontalalignment='center',
+                    verticalalignment='bottom',
+                    fontsize=14)
         return ax
 
 
@@ -183,7 +191,10 @@ class Categorical(PlotFunc):
         ct = pd.crosstab(data[feature], data[target], normalize='index')
         ct.plot(kind='bar', stacked=True, ax=ax)
         ax.set_title('{}'.format(feature))
-        ax.axhline(1-data[target].mean(), color="crimson", alpha=0.9, linestyle="--")
+        ax.axhline(1 - data[target].mean(),
+                   color="crimson",
+                   alpha=0.9,
+                   linestyle="--")
         ax.set_ylim(0, 1)
         plt.ylabel('{} Rate'.format(target))
         ax.set_xlabel('')
@@ -260,7 +271,7 @@ class Numerical(PlotFunc):
         temp = data.loc[data[feature].notnull(), feature]
         return temp
 
-    def _kstest(self, data, feature): 
+    def _kstest(self, data, feature):
         '''数值特征的正态性检验，确定分布是否符合正态分布。'''
         mean, std = data[feature].mean(), data[feature].std()
         temp = self.drop_null_item(data, feature)
@@ -273,7 +284,7 @@ class Numerical(PlotFunc):
     def kstests(self, data, features):
         mask = [self._kstest(data, each) for each in features]
         return mask
-    
+
     def plot_strips(self, data, features, target, ax=None):
         '''按照label,对数据集中的数值特征绘制stripplot，可以根据图形从中寻找到
         数值特征中的异常值。'''
@@ -282,16 +293,21 @@ class Numerical(PlotFunc):
         fig = plt.figure(figsize=(16, 20*nrows//3))
         for i, feature in enumerate(features):
             ax = fig.add_subplot(grid[i])
-            sns.stripplot(target, feature, jitter=True, palette='muted',
-                       order=[0,1], data=data, ax=ax)
+            sns.stripplot(target,
+                          feature,
+                          jitter=True,
+                          palette='muted',
+                          order=[0, 1],
+                          data=data,
+                          ax=ax)
 
     def plot_kde(self, data, feature, ax=None, **kwargs):
         '''绘制数值特征的kernel density estimation，同时采用
         正太分布进行对照。'''
         ax = self.get_ax(ax)
         sample = self.drop_null_item(data, feature).to_numpy()
-        ax = sns.distplot(sample,hist=False, fit=stats.norm, ax=ax, **kwargs)
-        ax.legend(ax.lines, ['kde','norm'],loc=1)
+        ax = sns.distplot(sample, hist=False, fit=stats.norm, ax=ax, **kwargs)
+        ax.legend(ax.lines, ['kde', 'norm'], loc=1)
         ax.set_title('{} kde distribution'.format(
             feature), fontdict=self.font1)
         ax.set_ylabel('Probability', fontdict=self.font2, labelpad=6)
@@ -338,7 +354,7 @@ class Numerical(PlotFunc):
         '''绘制数值特征的条形图'''
         ax = self.get_ax(ax)
         temp = self.drop_null_item(data, feature)
-        bins = min(int(np.sqrt(temp.shape[0])),bins)
+        bins = min(int(np.sqrt(temp.shape[0])), bins)
         _ = ax.hist(data[feature], bins=bins, alpha=0.7)
         ax.set_title('{} distribution'.format(feature), fontdict=self.font2)
         ax.set_xlabel('{}'.format(feature), fontdict=self.font1, labelpad=2)
@@ -350,7 +366,7 @@ class Numerical(PlotFunc):
         ax = self.get_ax(ax)
         X0 = data.loc[data[target] == 0, feature]
         X1 = data.loc[data[target] == 1, feature]
-        bins = min(int(np.sqrt(min(len(X0), len(X1)))),bins)
+        bins = min(int(np.sqrt(min(len(X0), len(X1)))), bins)
         X0 = self.drop_null_item(X0)
         X1 = self.drop_null_item(X1)
         n1, bins1, _ = ax.hist(X0, bins=bins, alpha=0.6, label='Target=0')
@@ -389,9 +405,11 @@ class Constant(PlotFunc):
             col_most_values[col] = value_counts.max()
             col_large_value[col] = value_counts.idxmax()
 
-        most_values_df = pd.DataFrame.from_dict(col_most_values, orient='index')  # 字典的key为index
+        most_values_df = pd.DataFrame.from_dict(col_most_values,
+                                                orient='index')  # 字典的key为index
         most_values_df.columns = ['max percent']
-        most_values_df = most_values_df.sort_values(by='max percent', ascending=False)
+        most_values_df = most_values_df.sort_values(by='max percent',
+                                                    ascending=False)
         return most_values_df, col_large_value
 
     def plot_frequency(self, data, N=30):
@@ -408,7 +426,7 @@ class Constant(PlotFunc):
         '''对特征进行0-1编码的特征，出现次数最多的的样本为一类，其他的为一类'''
         result = data[features].copy()
         if col_large is None:
-            col_larges={}
+            col_larges = {}
             for each in features:
                 col_large = result[each].value_counts().idxmax()
                 col_larges[each] = col_large
@@ -416,9 +434,10 @@ class Constant(PlotFunc):
             return result, col_larges
         else:
             for each in features:
-                result[each+'_bins'] = (result[each] == col_large[each]).astype(int)
+                result[each +
+                       '_bins'] = (result[each] == col_large[each]).astype(int)
             return result
-    
+
     def find_columns(self, data, threshold=None):
         if threshold is None:
             threshold = self.deletes
@@ -457,7 +476,7 @@ class Constant(PlotFunc):
 class CalEnt:
     '''比较某字段在类别合并前后的信息熵、基尼值、信息值IV，若合并后信息熵值减小/基尼值减小/信息值IV增大，
     则确认合并类别有助于提高此字段的分类能力，可以考虑合并类别。'''
-    def _entropy(self, group): # 计算信息熵
+    def _entropy(self, group):  # 计算信息熵
         return -group*np.log2(group+1e-5)
 
     def _gini(self, group):  # 计算基尼系数
@@ -469,7 +488,7 @@ class CalEnt:
         temp = pd.crosstab(data[feature], data[target], normalize='index')
         enti = func(temp)
         return (temp1*enti.sum(axis=1)).sum()
-    
+
     def calculates(self, data, features, target, func):
         '''通用函数，用来处理多个特征的计算'''
         if isinstance(features, str):
@@ -480,21 +499,21 @@ class CalEnt:
             return result
         else:
             raise TypeError('Features is not right!')
-    
+
     def entropy(self, data, feature, target):  # 计算条件信息熵
         return self.cal(data, feature, target, self._entropy)
-    
+
     def entropys(self, data, features, target):
         '''计算条件信息熵的接口，通过条件信息熵可以评价特征的重要程度。'''
         return self.calculates(data, features, target, self.entropy)
-    
+
     def gini(self, data, feature, target):  # 计算条件基尼系数
         return self.cal(data, feature, target, self._gini)
-    
+
     def ginis(self, data, features, target):
         '''计算条件信息系数的接口，通过条件信息系数可以评价特征的重要程度。'''
         return self.calculates(data, features, target, self.entropy)
-    
+
     def woe(self, data, feature, target):
         '''计算woe值,可以用于类别特征的编码'''
         temp = pd.crosstab(data[feature], data[target], normalize='columns')
@@ -507,10 +526,10 @@ class CalEnt:
         woei = self.woe(data, feature, target)
         iv = (temp.iloc[:, 0] - temp.iloc[:, 1])*woei
         return iv.sum()
-    
+
     def ivs(self, data, features, target):
         return self.calculates(data, features, target, self.iv)
-        
+
     def woes(self, data, features, target):
         if isinstance(features, str):
             return self.woe(data, features, target)
@@ -672,12 +691,14 @@ class FeatureStability:
         else:
             _, pvalue = stats.ks_2samp(train[feature], test[feature])
         return pvalue
-    
+
     def num_stab_tests(self, train, test, features):
-        values = [self.num_stab_test(train, test, feature) for feature in features]
+        values = [
+            self.num_stab_test(train, test, feature) for feature in features
+        ]
         mask = [value > self.pvalue for value in values]
         return mask, values
-    
+
     def get_value_count(self, train, test, feature=None, normalize=True):
         if feature is None:
             count = train.value_counts(normalize=normalize)
@@ -685,7 +706,7 @@ class FeatureStability:
         else:
             count = train[feature].value_counts(normalize=normalize)
             count1 = test[feature].value_counts(normalize=normalize)
-        index = count.index|count1.index
+        index = count.index | count1.index
         if normalize:
             count = count.reindex(index).fillna(1e-3)
             count1 = count1.reindex(index).fillna(1e-3)
@@ -693,30 +714,36 @@ class FeatureStability:
             count = count.reindex(index).fillna(1)
             count1 = count1.reindex(index).fillna(1)
         return count, count1
-    
-    def psi(self, train, test, feature=None): # Population Stability Index
+
+    def psi(self, train, test, feature=None):  # Population Stability Index
         '''PSI大于0.1则视为不太稳定。越小越稳定,通过PSI来评估特征在训练集和测试集上
         分布的稳定性。'''
         count, count1 = self.get_value_count(train, test, feature)
         res = (count1 - count)*np.log(count1/count)
         return res.sum()
-    
+
     def psis(self, train, test, features):
         value = [self.psi(train, test, feature) for feature in features]
         res = pd.Series(value, index=features)
         return res
-    
+
     def cat_stab_test(self, train, test, feature=None):
         '''检验类别特征在训练集和测试集分布是否一致。chi2检验，null hypothesis为分布相互
         对立，所以pvalue小于设定值拒绝原假设，即特征的分布与训练集和测试集有关，即
         特征分布在训练集和测试集不是一致的。'''
-        count, count1 = self.get_value_count(train, test, feature, normalize=False)
-        data = pd.concat([count,count1],axis=1)
-        _, pvalue,*_ = stats.chi2_contingency(data.to_numpy().T, correction=False)
+        count, count1 = self.get_value_count(train,
+                                             test,
+                                             feature,
+                                             normalize=False)
+        data = pd.concat([count, count1], axis=1)
+        _, pvalue, *_ = stats.chi2_contingency(data.to_numpy().T,
+                                               correction=False)
         return pvalue
-    
+
     def cat_stab_tests(self, train, test, features):
-        values = [self.cat_stab_test(train, test, feature) for feature in features]
+        values = [
+            self.cat_stab_test(train, test, feature) for feature in features
+        ]
         mask = [value > self.pvalue for value in values]
         return mask, values
 
@@ -724,33 +751,57 @@ class FeatureStability:
         if labels is None:
             label1, label2 = 'Train', 'Test'
             return label1, label2
-        elif isinstance(labels, Iterable) and len(labels)>=2:
+        elif isinstance(labels, Iterable) and len(labels) >= 2:
             label1, label2 = labels[0], labels[1]
             return label1, label2
         else:
             raise ValueError('labels is wrong!')
-    
+
     def plot_train_test_num(self, train, test, features, labels=None):
         '''可视化数值特征在训练集和测试集上的分布。'''
         label1, label2 = self.get_labels(labels)
         if isinstance(features, str):
-            fig = plt.figure(figsize=(8,6))
+            fig = plt.figure(figsize=(8, 6))
             ax = fig.add_subplot()
-            fig.suptitle('Distribution of values in {} and {}'.format(label1, label2), fontsize=16)
+            fig.suptitle('Distribution of values in {} and {}'.format(
+                label1, label2),
+                         fontsize=16)
             ax.set_title('Distribution of {}'.format(features))
-            sns.distplot(train[features], color="green", kde=True, bins=50, label=label1, ax=ax)
-            sns.distplot(test[features], color="blue", kde=True, bins=50, label=label2, ax=ax)
+            sns.distplot(train[features],
+                         color="green",
+                         kde=True,
+                         bins=50,
+                         label=label1,
+                         ax=ax)
+            sns.distplot(test[features],
+                         color="blue",
+                         kde=True,
+                         bins=50,
+                         label=label2,
+                         ax=ax)
             plt.legend(loc=2)
         elif isinstance(features, Iterable):
             nrows = len(features)//4+1
             fig = plt.figure(figsize=(20, 5*nrows))
-            fig.suptitle('Distribution of values in {} and {}'.format(label1, label2), 
-                         fontsize=16, horizontalalignment='right')
+            fig.suptitle('Distribution of values in {} and {}'.format(
+                label1, label2),
+                         fontsize=16,
+                         horizontalalignment='right')
             grid = gridspec.GridSpec(nrows, 4)
             for i, each in enumerate(features):
                 ax = fig.add_subplot(grid[i])
-                sns.distplot(train[each], color="green", kde=True, bins=50, label=label1, ax=ax)
-                sns.distplot(test[each], color="blue", kde=True, bins=50, label=label2, ax=ax)
+                sns.distplot(train[each],
+                             color="green",
+                             kde=True,
+                             bins=50,
+                             label=label1,
+                             ax=ax)
+                sns.distplot(test[each],
+                             color="blue",
+                             kde=True,
+                             bins=50,
+                             label=label2,
+                             ax=ax)
                 ax.set_xlabel('')
                 plt.legend(loc=2)
                 ax.set_title('Distribution of {}'.format(each))
@@ -761,7 +812,7 @@ class FeatureStability:
     def get_melt(self, train, test, feature, labels):
         res = train[feature].value_counts(normalize=True)
         res1 = test[feature].value_counts(normalize=True)
-        data = pd.concat([res,res1], axis=1).fillna(0)
+        data = pd.concat([res, res1], axis=1).fillna(0)
         data.columns = labels
         data = data.reset_index()  # index变为column后的name默认为index
         melt = pd.melt(data, id_vars='index')
@@ -771,28 +822,36 @@ class FeatureStability:
         '''可视化类别特征在训练集和测试集上的分布。'''
         label1, label2 = self.get_labels(labels)
         if isinstance(features, str):
-            fig = plt.figure(figsize=(8,6))
+            fig = plt.figure(figsize=(8, 6))
             ax = fig.add_subplot()
-            fig.suptitle('Distribution of values in {} and {}'.format(label1, label2), fontsize=16)
+            fig.suptitle('Distribution of values in {} and {}'.format(
+                label1, label2),
+                         fontsize=16)
             ax.set_title('{}'.format(features))
             melt = self.get_melt(train, test, features, [label1, label2])
-            sns.barplot(x='index',y='value', data=melt, hue='variable', ax=ax)
+            sns.barplot(x='index', y='value', data=melt, hue='variable', ax=ax)
             plt.legend(loc=2)
         elif isinstance(features, Iterable):
             nrows = len(features)//4 + 1
             fig = plt.figure(figsize=(20, 5*nrows))
-            fig.suptitle('Distribution of values in {} and {}'.format(label1, label2), 
-                         fontsize=16, horizontalalignment='right')
+            fig.suptitle('Distribution of values in {} and {}'.format(
+                label1, label2),
+                         fontsize=16,
+                         horizontalalignment='right')
             grid = gridspec.GridSpec(nrows, 4)
             for i, each in enumerate(features):
                 ax = fig.add_subplot(grid[i])
                 melt = self.get_melt(train, test, each, [label1, label2])
-                sns.barplot(x='index',y='value', data=melt, hue='variable', ax=ax)
+                sns.barplot(x='index',
+                            y='value',
+                            data=melt,
+                            hue='variable',
+                            ax=ax)
                 ax.set_title('{}'.format(each))
                 plt.legend(loc=2)
         else:
             raise TypeError('{} is not right datatype'.format(type(features)))
-    
+
     def target_split_data(self, data, target):
         '''根据目标特征对训练集进行划分。'''
         mask = data[target] == 0
@@ -800,12 +859,12 @@ class FeatureStability:
         test = data.loc[~mask, :]
         labels = ['Target=0', 'Target=1']
         return train, test, labels
-    
+
     def plot_target_feature_cat(self, data, features, target):
         '''可视化类别特征在目标变量上的分布。'''
         train, test, labels = self.target_split_data(data, target)
         self.plot_train_test_cat(train, test, features, labels)
-    
+
     def plot_target_feature_num(self, data, features, target):
         '''可视化数值特征在目标变量上的分布。'''
         train, test, labels = self.target_split_data(data, target)

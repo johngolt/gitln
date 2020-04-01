@@ -5,6 +5,8 @@ import scipy.stats as stats
 import matplotlib.pyplot as plt
 from collections.abc import Iterable
 from matplotlib import gridspec
+import matplotlib as mpl
+import seaborn as sns
 
 
 class Outlier:
@@ -57,13 +59,6 @@ class Outlier:
         plt.subplots_adjust(hspace=0.5, wspace=.3)
 
 
-import numpy as np
-import pandas as pd
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-
 class BaseSetting:
     def __init__(self):
         self.large=22
@@ -92,7 +87,7 @@ class Visual:
         mapping = {key:value for value, key in enumerate(unique)}
         ser = data[x].replace(mapping)
         return ser, mapping
-    
+
     def catelabels(self, mapping, ax, xaxis=True):
         if xaxis:
             ax.xaxis.set_ticks(list(mapping.values()))
@@ -105,7 +100,7 @@ class Visual:
 
     def scatterwithline(self, data, x, y, hue=None):
         '''了解两个变量如何相互改变'''
-        grid = sns.lmplot(x=x, y=y, hue=hue, data=data, height=7, aspect=1.6, robust=True, 
+        grid = sns.lmplot(x=x, y=y, hue=hue, data=data, height=7, aspect=1.6, robust=True,
         palette='tab10', scatter_kws=dict(s=60, linewidths=.7, edgecolors='black'))
         xmin,xmax = data[x].min(),data[x].max()
         ymin, ymax = data[y].min(),data[y].max()
@@ -118,7 +113,7 @@ class Visual:
         _, ax = self.getfigax()
         sns.stripplot(data[x], data[y], jitter=0.25, siz=6, ax=ax, linewidth=.5)
         ax.set_title('Jittered Plots',fontsize=22)
-    
+
     def countjitter(self, data, x, y):
         '''避免点重叠问题的另一个选择是增加点的大小，点的大小越大，周围的点的集中度就越大。'''
         data = data.copy()
@@ -127,7 +122,7 @@ class Visual:
         ser1, mapping1 = self.getmap(data, y)
         data[y] = ser1
         data = data.groupby([x,y]).size().reset_index(name='counts')
-        _, ax = self.getfigax()   
+        _, ax = self.getfigax()
         sns.stripplot(data[x], data[y], size=data['counts'], ax=ax)
         ax = self.catelabels(mapping, ax)
         ax = self.catelabels(mapping1, ax, xaxis=False)
@@ -138,7 +133,7 @@ from pyecharts import options as opts
 from pyecharts.charts import Geo, Map
 from pyecharts.globals import GeoType, SymbolType
 from pyecharts import render
-from pyecharts.globals import ThemeType 
+from pyecharts.globals import ThemeType
 
 
 
@@ -158,7 +153,7 @@ class GeoVisual:
                   .set_series_opts(label_opts=opts.LabelOpts(is_show=False))
                   .set_global_opts(visualmap_opts=opts.VisualMapOpts(),
                                    title_opts=opts.TitleOpts(title=title),))
-        return g 
+        return g
 
     def show_province(self, name, series, type_='scatter', title=None):
         data=self.process(series)
@@ -211,6 +206,3 @@ class TableVisual:
 
     def gridshow(self, graphs):
         pass
-
-
-    
