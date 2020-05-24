@@ -1,8 +1,9 @@
 import sklearn.model_selection as ms
 from sklearn import clone
-from sklearn.metrics import roc_auc_score, roc_curve, auc
+import sklearn.metrics as metrics
 import matplotlib.pyplot as plt
 import numpy as np
+from sklearn.base import ClassifierMixin, BaseEstimator
 
 
 class HyOptimize:
