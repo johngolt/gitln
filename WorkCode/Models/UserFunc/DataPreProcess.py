@@ -869,3 +869,6 @@ class FeatureStability:
         '''可视化数值特征在目标变量上的分布。'''
         train, test, labels = self.target_split_data(data, target)
         self.plot_train_test_num(train, test, features, labels)
+
+__all__ = ['FeatureStatistics', 'split_cat_num', 'PlotFunc', 'Categorical', 'Numerical', 
+'Constant', 'CalEnt', 'Missing', 'FeatureStability']
