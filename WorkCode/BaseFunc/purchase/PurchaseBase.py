@@ -50,10 +50,6 @@ def generate_test_data(data):
     total_balance = total_balance.reset_index(drop=True)
     return total_balance.reset_index(drop=True)
 
-# Load user's information
-def load_user_information(path='user_profile_table.csv'):
-    return pd.read_csv(path)
-
 # 定义生成时间序列规则预测结果的方法
 def generate_base(df, month_index):
     # 选中固定时间段的数据集

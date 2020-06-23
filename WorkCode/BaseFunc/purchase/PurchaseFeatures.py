@@ -315,7 +315,7 @@ def generate_rate(df, month_index, labels):
 
 
 ## 提取动态特征
-def get_amtfeature_with_time(data, labels, date_indexs)->pd.DataFrame:
+def get_amtfeature_with_time(data, labels, date_indexs):
     df_tmp_ = data[labels + date_indexs + ['date']].copy()
     total_balance = data.copy()
     
