@@ -47,7 +47,8 @@ def split_cat_num(data, cat=15):
 class FeatureStatistics:
     '''得到数据的基本信息以及对可视化数据的分布。'''
 
-    def split(self, data):  # 划分类别和数值特征
+    def split(self, data): 
+        '''将object类型和数值类型分开'''
         numerical = data.select_dtypes(exclude='object')
         categorical = data.select_dtypes(include='object')
         return numerical, categorical
@@ -117,15 +118,15 @@ class FeatureStatistics:
             self.plot_categories(categorical)
 
     def plot_numerical(self, numerical, style=sns.distplot, **kwargs):
-        '''数值特征的可视化，包括kdeplot'''
+        '''数值特征的可视化，包括kdeplot，默认不可以有缺失值。'''
         melt = pd.melt(numerical)
         g = sns.FacetGrid(data=melt, col="variable",
                           col_wrap=4, sharex=False, sharey=False)
         g.map(style, 'value', **kwargs)
 
     def plot_categories(self, categorical, **kwargs):
-        '''类别特征的可视化，对于取值较多的类别特征，这里面定义为大于50个，为了
-        可视化的效果，将绘制出现频率的散点图，小于等于50个将绘制条形图。可视化函数
+        '''类别特征的可视化，对于取值较多的类别特征，这里面定义为大于30个，为了
+        可视化的效果，将绘制出现频率的散点图，小于等于30个将绘制条形图。可视化函数
         由_catplot函数实现。'''
         melt = pd.melt(categorical)
         g = sns.FacetGrid(data=melt, col="variable",
@@ -135,7 +136,7 @@ class FeatureStatistics:
     def _catplot(self, ser, **kwarg):  # 类别特征的可视化
         count = ser.value_counts()
         ax = plt.gca()
-        if count.shape[0] > 50:  # 对于取值较多的特征，绘制散点图。
+        if count.shape[0] > 30:  # 对于取值较多的特征，绘制散点图。
             ax.scatter(x=count.index, y=count.values, **kwarg)
             ax.axhline(y=0, color='r', linestyle='--')
             ax.xaxis.set_ticklabels([])
