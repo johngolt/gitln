@@ -3,8 +3,6 @@ import numpy as np
 import seaborn as sns
 import scipy.stats as stats
 import matplotlib.pyplot as plt
-from collections.abc import Iterable
-from matplotlib import gridspec
 
 
 class FeatureStatistics:
