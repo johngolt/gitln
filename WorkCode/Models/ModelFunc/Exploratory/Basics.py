@@ -57,8 +57,11 @@ class PlotFunc:
             return ax
         return ax
 
-    def plot_bin(self, data, ax=None):
+    def plot_bin(self, data, ax=None, is):
         ax = self.get_ax(ax)
+        if isinstance(data, pd.core.series.Series):
+            data = data.reset_index()
+            
         data.columns = ['a', 'b']
         ax.vlines(x=data.index, ymin=0,
                   ymax=data['b'], color='firebrick', alpha=0.7, linewidth=2)
