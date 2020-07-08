@@ -1,3 +1,11 @@
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import scipy.stats as stats
+import matplotlib.pyplot as plt
+from collections.abc import Iterable
+from matplotlib import gridspec
+
 class CalEnt:
     '''比较某字段在类别合并前后的信息熵、基尼值、信息值IV，若合并后信息熵值减小/基尼值减小/信息值IV增大，
     则确认合并类别有助于提高此字段的分类能力，可以考虑合并类别。'''

@@ -1,7 +1,13 @@
-class Constant(PlotFunc):
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import scipy.stats as stats
+import matplotlib.pyplot as plt
+from collections.abc import Iterable
+from matplotlib import gridspec
 
-    def __init__(self, deletes=0.9):
-        self.deletes = deletes
+
+class ConstantBase:
 
     def check_constant(self, data):
         '''检测常变量，返回特征值为常变量或者缺失率为100%的特征。'''
@@ -24,10 +30,25 @@ class Constant(PlotFunc):
         most_values_df = most_values_df.sort_values(by='max percent',
                                                     ascending=False)
         return most_values_df, col_large_value
+    
+    def find_columns(self, data, threshold=None):
+        if threshold is None:
+            threshold = self.deletes
+        col_most, _ = self.most_frequent(data)
+        large_percent_cols = list(
+            col_most[col_most['max percent'] >= threshold].index)
+        return large_percent_cols
+
+
+class ConstantProcess(ConstantBase):
+
+    def __init__(self, deletes=0.9):
+        self.deletes = deletes
+
 
     def plot_frequency(self, data, N=30):
         '''将样本中有缺失的特征的缺失率按从大到小绘制出来'''
-        _, ax = plt.subplots(figsize=(8, 6))
+        _, ax = plt.subplots(nrows=1, ncols=1, figsize=(8, 6))
         ax.set_ylabel('Frequency Rate')
         ser, _ = self.most_frequent(data)
         ser = ser[:N]
@@ -50,14 +71,6 @@ class Constant(PlotFunc):
                 result[each +
                        '_bins'] = (result[each] == col_large[each]).astype(int)
             return result
-
-    def find_columns(self, data, threshold=None):
-        if threshold is None:
-            threshold = self.deletes
-        col_most, _ = self.most_frequent(data)
-        large_percent_cols = list(
-            col_most[col_most['max percent'] >= threshold].index)
-        return large_percent_cols
 
     def delete_frequency(self, data, threshold=None):
         '''特征中某个值出现的概率很高的特征进行删除。 '''

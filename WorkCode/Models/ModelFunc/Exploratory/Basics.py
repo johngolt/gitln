@@ -57,7 +57,7 @@ class PlotFunc:
             return ax
         return ax
 
-    def plot_bin(self, data, ax=None, is):
+    def plot_bin(self, data, ax=None):
         ax = self.get_ax(ax)
         if isinstance(data, pd.core.series.Series):
             data = data.reset_index()

@@ -11,7 +11,7 @@ plt.rcParams['font.sans-serif'] = ['SimHei']  # 可以显示中文
 plt.rcParams['axes.unicode_minus'] = False  # 可以显示负号
 
 
-class Missing(PlotFunc):
+class MissingBase:
     '''对特征中缺失值的处理方法，包括缺失值的可视化，特征缺失的可视化和样本缺失的可视化，对于缺失值的处理分为：
     删除，0-1编码，另作为一类，编码并填补，填补缺失值。'''
 
@@ -33,7 +33,7 @@ class Missing(PlotFunc):
         return ratio
 
 
-class MissingPlot(Missing):
+class MissingPlot(MissingBase):
 
     def plot_miss(self, data):
         '''将样本中有缺失的特征的缺失率按从大到小绘制出来'''
@@ -55,7 +55,7 @@ class MissingPlot(Missing):
         plt.scatter(x, ser.values, c='black')
 
 
-class MissingProcess(Missing):
+class MissingProcess(MissingBase):
 
     def __init__(self, delete=0.9, indicator=0.6, fill=0.1):
         '''初始化三个阈值,删除的阈值，产生indicator的阈值，填充的阈值。'''

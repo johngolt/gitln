@@ -1,3 +1,32 @@
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import scipy.stats as stats
+import matplotlib.pyplot as plt
+from collections.abc import Iterable
+from matplotlib import gridspec
+
+class CateVisual:
+
+    def get_ax(self, ax=None):
+        if ax is None:
+            fig = plt.figure(figsize=(8, 5))
+            ax = fig.add_subplot()
+            return ax
+        return ax
+
+    def dist_visual(self, data, feature, ax=None, **kwarg):
+        ax = self.get_ax(ax)
+        temp = data[feature].value_counts(dropna=False)
+        if temp.shape[0] > 30:
+            ax.scatter(x=temp.index, y=temp.values, **kwarg)
+            ax.axhline(y=0, color='r', linestyle='--')
+            ax.xaxis.set_ticklabels([])
+        else:
+            temp.plot(kind='bar', **kwarg)
+    
+    
+    
 class Categorical(PlotFunc):
     '''对类别特征进行分析，适合取值不多的类别特征。对于取值很多的类别特征可视化效果不好'''
 

@@ -1,3 +1,19 @@
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import scipy.stats as stats
+import matplotlib.pyplot as plt
+from collections.abc import Iterable
+from matplotlib import gridspec
+
+
+class StabilityTest:
+    pass
+
+
+class TrainTestVisual:
+    pass
+
 class FeatureStability:
     '''可视化特征在训练集和测试集上的分布，可以用来发现不稳定的特征。也可以用来可视化特征在不同类别的特征，
     用来选取重要特征或者删除不重要特征。通过函数发现训练和测试集分布不一致的特征，返回不一致的特征'''

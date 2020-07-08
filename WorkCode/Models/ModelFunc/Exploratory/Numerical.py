@@ -1,3 +1,33 @@
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import scipy.stats as stats
+import matplotlib.pyplot as plt
+from collections.abc import Iterable
+from matplotlib import gridspec
+
+
+class NormTest:
+    pass
+
+
+class NumVisual:
+
+    def dist_visual(self, feature, target=None, **kwargs):
+        pass
+
+    def box_visual(self, feature, target=None, **kwargs):
+        pass
+
+    def scat_visual(self, feature, target, **kwargs):
+        pass
+
+class NumVisuals(NumVisual):
+
+    def pair_visual(self, data, features, target=None, **kwargs):
+        pass
+    
+
 class Numerical(PlotFunc):
 
     def drop_null_item(self, data, feature=None):
