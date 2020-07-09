@@ -5,27 +5,22 @@ import scipy.stats as stats
 import matplotlib.pyplot as plt
 
 
-class FeatureStatistics:
-    '''得到数据的基本信息以及对可视化数据的分布。'''
+class StatisticInfo:
+    '''得到数据的基本信息，数据名，空值比例，取值个数，高频比例、高频类别'''
 
     def split(self, data): 
         '''将object类型和数值类型分开'''
         numerical = data.select_dtypes(exclude='object')
         categorical = data.select_dtypes(include='object')
         return numerical, categorical
-
-    def describe(self, data):
-        '''得到数值和类别特征的一些统计特征'''
-        numerical, categorical = self.split(data)
-        if not numerical.empty:
-            _ = self.describe_num(numerical)
-        if not categorical.empty:
-            _ = self.describe_cat(categorical)
-
+    
+    def get_length(self, data):
+        return data.shape[0]
+    
     def _describe_all(self, data):
         '''类别特征和数值特征共有的一些特征信息，包括数据名，空值比例，取值个数，高频比例
         高频数，同时记录样本数数。'''
-        length = data.shape[0]
+        length = self.get_length(data)
         result = pd.DataFrame(columns=['数据名', '空值比例', '类别数', '高频类别', '高频类别比例'])
         result['数据名'] = data.columns
         result = result.set_index('数据名')
@@ -33,12 +28,13 @@ class FeatureStatistics:
         result['类别数'] = data.nunique()
         result['高频类别'] = data.apply(lambda x: x.value_counts().idxmax())
         result['高频类别比例'] = (data == result['高频类别']).sum()/length
-        return result, length
-
+        return result
+    
     def describe_num(self, numerical, stat=False):
         '''得到数值特征的统计特征，除去共有的特征信息外，增加了负值比例，零值比例，
         也可以根据具体情况也可以查看数值特征的一些统计特征：最大最小值，均值等。'''
-        self.num, length = self._describe_all(numerical)
+        self.num = self._describe_all(numerical)
+        length = self.get_length(numerical)
         self.num['负值比例'] = (numerical < 0).sum()/length
         self.num['零值比例'] = (numerical == 0).sum()/length
         if stat:
@@ -60,15 +56,22 @@ class FeatureStatistics:
         stat['偏度'] = numerical.skew()
         stat['峰度'] = numerical.kurt()
         return stat
-
+    
     def describe_cat(self, categorical):
         '''得到类别特征的信息，除去共有的特征信息外，增加了熵值，
         越接近0代表分布越集中，越接近1代表分布越分散。'''
-        self.cat, _ = self._describe_all(categorical)
+        self.cat = self._describe_all(categorical)
         self.cat['熵'] = categorical.apply(lambda x: stats.entropy(
             x.value_counts(normalize=True), base=2))/np.log2(self.cat['类别数'])
         self.cat = self.cat.reset_index()
         return self.cat
+    
+    
+
+    
+
+class FeatureStatistics:
+    '''得到数据的基本信息以及对可视化数据的分布。'''
 
     def plot(self, data):
         '''可视化类别和数值特征，数值默认为分布图，类别默认为柱状图'''

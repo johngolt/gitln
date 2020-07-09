@@ -5,6 +5,7 @@ import scipy.stats as stats
 import matplotlib.pyplot as plt
 from collections.abc import Iterable
 from matplotlib import gridspec
+from .Basics import PlotFunc
 
 plt.rcParams['font.family'] = ['sans-serif']
 plt.rcParams['font.sans-serif'] = ['SimHei']  # 可以显示中文
@@ -33,11 +34,11 @@ class MissingBase:
         return ratio
 
 
-class MissingPlot(MissingBase):
+class MissingPlot(MissingBase, PlotFunc):
 
     def plot_miss(self, data):
         '''将样本中有缺失的特征的缺失率按从大到小绘制出来'''
-        _, ax = plt.subplots(figsize=(8, 5))
+        _, ax = plt.subplots(nrows=1, ncols=1, figsize=(8, 5))
         ax.set_ylabel('Missing Rate')
         null = self.is_null_feature(data)
         n = data.shape[0]
@@ -46,6 +47,7 @@ class MissingPlot(MissingBase):
         data = ser.reset_index()
         ax = self.plot_bin(data, ax=ax)
         ax.set_title('Missing Rate', fontdict={'size': 18})
+
 
     def plot_item_miss(self, data):
         '''将每个样本的缺失值个数按从小到大绘制出来。'''

@@ -56,12 +56,9 @@ class PlotFunc:
             ax = fig.add_subplot()
             return ax
         return ax
-
-    def plot_bin(self, data, ax=None):
+    
+    def _binplot(self, data, ax=None):
         ax = self.get_ax(ax)
-        if isinstance(data, pd.core.series.Series):
-            data = data.reset_index()
-            
         data.columns = ['a', 'b']
         ax.vlines(x=data.index, ymin=0,
                   ymax=data['b'], color='firebrick', alpha=0.7, linewidth=2)
@@ -71,10 +68,8 @@ class PlotFunc:
         ax.set_xticks(data.index)
         ax.set_xticklabels(data['a'],
                            rotation=90,
-                           fontdict={
-                               'horizontalalignment': 'right',
-                               'size': 12
-                           })
+                           fontdict={'horizontalalignment': 'right',
+                               'size': 12})
 
         for row in data.itertuples():
             ax.text(row.Index,
@@ -84,3 +79,17 @@ class PlotFunc:
                     verticalalignment='bottom',
                     fontsize=14)
         return ax
+
+    def plot_bin(self, data, ax=None):
+        ax = self.get_ax(ax)
+        if isinstance(data, pd.core.series.Series):
+            data = data.reset_index()
+        if data.shape[0] > 30:
+            data.columns = ['a', 'b']
+            ax.scatter(x=data['a'], y=data['b'], color='blue')
+            ax.xaxis.set_ticklabels([])
+            ax.grid(axis='y', ls='--')
+            return ax
+        else:
+            self._binplot(data, ax=ax)
+            
