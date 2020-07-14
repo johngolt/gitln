@@ -38,15 +38,14 @@ class MissingPlot(MissingBase, PlotFunc):
 
     def plot_miss(self, data):
         '''将样本中有缺失的特征的缺失率按从大到小绘制出来'''
-        _, ax = plt.subplots(nrows=1, ncols=1, figsize=(8, 5))
-        ax.set_ylabel('Missing Rate')
         null = self.is_null_feature(data)
         n = data.shape[0]
         ser = (null/n).sort_values(ascending=False)
         ser = ser[ser > 0]
         data = ser.reset_index()
-        ax = self.plot_bin(data, ax=ax)
+        ax = self.plot_bin(data)
         ax.set_title('Missing Rate', fontdict={'size': 18})
+        ax.set_ylabel('Missing Rate')
 
 
     def plot_item_miss(self, data):

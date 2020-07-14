@@ -5,15 +5,9 @@ import scipy.stats as stats
 import matplotlib.pyplot as plt
 from collections.abc import Iterable
 from matplotlib import gridspec
+from .Basics import PlotFunc
 
-class CateVisual:
-
-    def get_ax(self, ax=None):
-        if ax is None:
-            fig = plt.figure(figsize=(8, 5))
-            ax = fig.add_subplot()
-            return ax
-        return ax
+class CateVisual(PlotFunc):
 
     def dist_visual(self, data, feature, ax=None, **kwarg):
         ax = self.get_ax(ax)

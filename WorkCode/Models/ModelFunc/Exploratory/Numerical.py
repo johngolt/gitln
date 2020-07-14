@@ -5,7 +5,7 @@ import scipy.stats as stats
 import matplotlib.pyplot as plt
 from collections.abc import Iterable
 from matplotlib import gridspec
-
+from .Basics import PlotFunc
 
 class NumTransform:
 
@@ -46,13 +46,21 @@ class NumVisual:
     def dist_visual(self, feature, target=None, **kwargs):
         pass
 
-    def box_visual(self, feature, target=None, **kwargs):
-        pass
-
+    def box_visual(self, feature, data, target=None, kind='strip', **kwargs):
+        if target is None:
+            ax = sns.catplot(feature, data=data, kind=kind, orient='v')
+        else:
+            ax = sns.catplot(target, feature, data=data, kind=kind, orient='v')
+        ax.grid(axis='y', ls='--')
+        return ax
+    
     def scat_visual(self, feature, target, **kwargs):
         pass
 
-class NumVisuals(NumVisual):
+class NumVisuals(NumVisual, PlotFunc):
+
+    def box_visuals(self, features, data, target, **func_kwargs):
+        self.gridspecplot(data, features, self.box_visual, target=target, **func_kwargs)
 
     def pair_visual(self, data, features, target=None, **kwargs):
         pass

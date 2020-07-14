@@ -32,23 +32,8 @@ plt.rcParams['font.family'] = ['sans-serif']
 plt.rcParams['font.sans-serif'] = ['SimHei']  # 可以显示中文
 plt.rcParams['axes.unicode_minus'] = False  # 可以显示负号
 
-
-def split_cat_num(data, cat=15):
-    '''对特征进行分类，得到数值特征和类别特征，对于数值特征中取值较少的特征，将其归为类别特征中。'''
-    categorical = data.select_dtypes(include='object')
-    numerical = data.select_dtypes(exclude='object')
-    nunique = numerical.nunique().sort_values(ascending=True)
-    n_index = nunique[nunique < cat].index
-    num = numerical.columns.difference(n_index)
-    category = categorical.columns
-    return category, num, n_index
-
     
 class PlotFunc:
-    '''针对类别特征和数值特征可视化的类别，更加具体的可视化特征的一些信息。'''
-    def __init__(self):
-        self.font1 = {'family': 'Calibri', 'weight': 'normal', 'size': 14}
-        self.font2 = {'family': 'Calibri', 'weight': 'normal', 'size': 18}
 
     def get_ax(self, ax=None):
         if ax is None:
@@ -57,27 +42,28 @@ class PlotFunc:
             return ax
         return ax
     
+    def gridspecplot(self, data, features, func, target=None, **func_kwargs):
+        nrows, ncols = len(features)//2+1, 2
+        grid = gridspec.GridSpec(nrows, ncols)
+        fig = plt.figure(figsize=(16, 20*nrows//3))
+        for i, each in enumerate(features):
+            ax = fig.add_subplot(grid[i])
+            func(data, each, target=target, ax=ax, **func_kwargs)
+        fig.subplots_adjust(wspace=0.5, hspace=0.5)
+    
     def _binplot(self, data, ax=None):
         ax = self.get_ax(ax)
         data.columns = ['a', 'b']
         ax.vlines(x=data.index, ymin=0,
                   ymax=data['b'], color='firebrick', alpha=0.7, linewidth=2)
         ax.scatter(x=data.index, y=data['b'],
-                   s=75, color='firebrick', alpha=0.7)
+                   s=50, color='firebrick', alpha=1)
 
         ax.set_xticks(data.index)
-        ax.set_xticklabels(data['a'],
-                           rotation=90,
+        ax.set_xticklabels(data['a'], rotation=90,
                            fontdict={'horizontalalignment': 'right',
                                'size': 12})
-
-        for row in data.itertuples():
-            ax.text(row.Index,
-                    row.b * 1.01,
-                    s=round(row.b, 2),
-                    horizontalalignment='center',
-                    verticalalignment='bottom',
-                    fontsize=14)
+        ax.grid(axis='y', ls='--')
         return ax
 
     def plot_bin(self, data, ax=None):
@@ -89,7 +75,9 @@ class PlotFunc:
             ax.scatter(x=data['a'], y=data['b'], color='blue')
             ax.xaxis.set_ticklabels([])
             ax.grid(axis='y', ls='--')
-            return ax
         else:
-            self._binplot(data, ax=ax)
+            ax = self._binplot(data, ax=ax)
+        return ax
+
+    
             

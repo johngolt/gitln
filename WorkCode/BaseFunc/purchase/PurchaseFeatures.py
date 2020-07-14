@@ -64,7 +64,8 @@ def extract_is_feature(data: pd.DataFrame)->pd.DataFrame:
 
     # 是否不用上班
     total_balance['is_work'] = 1
-    total_balance.loc[(total_balance['is_holiday'] == 1) | (total_balance['is_weekend'] == 1), 'is_work'] = 0
+    total_balance.loc[(total_balance['is_holiday'] == 1) | (total_balance['is_weekend'] == 1), 
+                                      'is_work'] = 0
     special_work_day_set = {datetime.date(2014,5,4), datetime.date(2014,9,28)}
     total_balance.loc[total_balance['date'].isin(special_work_day_set), 'is_work'] = 1
 
